@@ -29,6 +29,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.random.Random
 
 sealed interface AiAdviceState {
     object Idle : AiAdviceState
@@ -37,20 +38,48 @@ sealed interface AiAdviceState {
     data class Error(val error: String) : AiAdviceState
 }
 
-data class DailyTrendItem(
+enum class TrendTimeRange(val label: String) {
+    LAST_7_DAYS("近7天"),
+    THIS_WEEK("本周"),
+    THIS_MONTH("本月"),
+    SPECIFIC_MONTH("按月份"),
+    SPECIFIC_YEAR("按年份"),
+    CUSTOM_RANGE("自定义范围")
+}
+
+enum class ChartType(val label: String) {
+    BAR("柱状图"),
+    LINE("折线图"),
+    SCATTER("散点图"),
+    PIE("扇形图")
+}
+
+data class TrendDataItem(
     val dateLabel: String,
-    val selfCount: Int,
-    val sharedCount: Int,
-    val timestamp: Long
+    val selfCount: Int = 0,
+    val sharedCount: Int = 0,
+    val receivedCount: Int = 0,
+    val selfCost: Double = 0.0,
+    val sharedCost: Double = 0.0,
+    val receivedSaved: Double = 0.0,
+    val timestamp: Long = 0L
 )
 
 data class SmokingStats(
     val todaySelfCount: Int = 0,
     val todaySharedCount: Int = 0,
+    val todayReceivedCount: Int = 0,
     val todayTotalCount: Int = 0,
     val todayCost: Double = 0.0,
+    val todaySavedFromReceived: Double = 0.0,
     val weekTotalCount: Int = 0,
     val weekCost: Double = 0.0,
+    val monthTotalCount: Int = 0,
+    val monthCost: Double = 0.0,
+    val totalSelfCost: Double = 0.0,
+    val totalSharedCost: Double = 0.0,
+    val totalReceivedSaved: Double = 0.0,
+    val totalSpent: Double = 0.0,
     val totalSavedMoney: Double = 0.0,
     val currentGoalLimit: Int = 10,
     val isOverLimit: Boolean = false
@@ -75,72 +104,247 @@ class SmokingViewModel(
     private val _aiAdviceState = MutableStateFlow<AiAdviceState>(AiAdviceState.Idle)
     val aiAdviceState: StateFlow<AiAdviceState> = _aiAdviceState
 
-    // Process smoking logs into the last 7 days for the trend chart
-    val last7DaysTrend: StateFlow<List<DailyTrendItem>> = logs
-        .combine(cigarettes) { logList, cigList ->
-            calculateLast7DaysTrend(logList)
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val selectedTimeRange = MutableStateFlow(TrendTimeRange.LAST_7_DAYS)
+    val selectedChartType = MutableStateFlow(ChartType.BAR)
+    val selectedMonthYear = MutableStateFlow<Calendar>(Calendar.getInstance())
+    val customStartDate = MutableStateFlow<Long?>(null)
+    val customEndDate = MutableStateFlow<Long?>(null)
+
+    val isDemoMode = MutableStateFlow(false)
+
+    // Process smoking logs based on selected time range
+    val trendData: StateFlow<List<TrendDataItem>> = combine(
+        logs,
+        selectedTimeRange,
+        selectedMonthYear,
+        customStartDate,
+        customEndDate
+    ) { logList, timeRange, cal, startMs, endMs ->
+        calculateTrendData(logList, timeRange, cal, startMs, endMs)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Process general stats
     val stats: StateFlow<SmokingStats> = combine(logs, activeGoal, cigarettes) { logList, goal, cigList ->
-        calculateStats(logList, goal)
-    }
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SmokingStats())
+        calculateStats(logList, goal, cigList)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SmokingStats())
 
     init {
-        // Automatically fetch smart advice on first open
         viewModelScope.launch {
-            // Wait for database to initialize and load stats before asking AI
             delay(1500)
             fetchAiAdvice()
         }
     }
 
-    private fun calculateLast7DaysTrend(logList: List<SmokingLog>): List<DailyTrendItem> {
-        val calendar = Calendar.getInstance()
-        val sdf = SimpleDateFormat("MM/dd", Locale.getDefault())
-        val trend = ArrayList<DailyTrendItem>()
+    private fun calculateTrendData(
+        logList: List<SmokingLog>,
+        timeRange: TrendTimeRange,
+        cal: Calendar,
+        startMs: Long?,
+        endMs: Long?
+    ): List<TrendDataItem> {
+        val trend = ArrayList<TrendDataItem>()
+        val sdfDay = SimpleDateFormat("MM/dd", Locale.getDefault())
+        val sdfMonth = SimpleDateFormat("yyyy/MM", Locale.getDefault())
 
-        // Generate placeholders for the last 7 days in chronological order
-        for (i in 6 downTo 0) {
-            val dayCalendar = Calendar.getInstance()
-            dayCalendar.add(Calendar.DAY_OF_YEAR, -i)
-            
-            // Set to start of that day
-            dayCalendar.set(Calendar.HOUR_OF_DAY, 0)
-            dayCalendar.set(Calendar.MINUTE, 0)
-            dayCalendar.set(Calendar.SECOND, 0)
-            dayCalendar.set(Calendar.MILLISECOND, 0)
-            val dayStart = dayCalendar.timeInMillis
+        when (timeRange) {
+            TrendTimeRange.LAST_7_DAYS -> {
+                for (i in 6 downTo 0) {
+                    val dayCal = Calendar.getInstance().apply {
+                        add(Calendar.DAY_OF_YEAR, -i)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    val dayStart = dayCal.timeInMillis
+                    val dayEnd = dayCal.apply { set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59) }.timeInMillis
 
-            // Set to end of that day
-            dayCalendar.set(Calendar.HOUR_OF_DAY, 23)
-            dayCalendar.set(Calendar.MINUTE, 59)
-            dayCalendar.set(Calendar.SECOND, 59)
-            val dayEnd = dayCalendar.timeInMillis
+                    val dayLogs = logList.filter { it.timestamp in dayStart..dayEnd }
+                    val selfCount = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.quantity }
+                    val sharedCount = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.quantity }
+                    val receivedCount = dayLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
+                    val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
+                    val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
+                    val receivedSaved = receivedCount * 1.25
 
-            // Filter logs for this day
-            val dayLogs = logList.filter { it.timestamp in dayStart..dayEnd }
-            val selfCount = dayLogs.filter { !it.isShared }.sumOf { it.quantity }
-            val sharedCount = dayLogs.filter { it.isShared }.sumOf { it.quantity }
+                    trend.add(
+                        TrendDataItem(
+                            dateLabel = sdfDay.format(dayCal.time),
+                            selfCount = selfCount,
+                            sharedCount = sharedCount,
+                            receivedCount = receivedCount,
+                            selfCost = selfCost,
+                            sharedCost = sharedCost,
+                            receivedSaved = receivedSaved,
+                            timestamp = dayStart
+                        )
+                    )
+                }
+            }
+            TrendTimeRange.THIS_WEEK -> {
+                val currentCal = Calendar.getInstance()
+                currentCal.firstDayOfWeek = Calendar.MONDAY
+                currentCal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                currentCal.set(Calendar.HOUR_OF_DAY, 0)
+                currentCal.set(Calendar.MINUTE, 0)
+                currentCal.set(Calendar.SECOND, 0)
+                currentCal.set(Calendar.MILLISECOND, 0)
 
-            trend.add(
-                DailyTrendItem(
-                    dateLabel = sdf.format(dayCalendar.time),
-                    selfCount = selfCount,
-                    sharedCount = sharedCount,
-                    timestamp = dayStart
-                )
-            )
+                val dayNames = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+                for (i in 0..6) {
+                    val dayCal = currentCal.clone() as Calendar
+                    dayCal.add(Calendar.DAY_OF_YEAR, i)
+                    val dayStart = dayCal.timeInMillis
+                    val dayEnd = (dayCal.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59) }.timeInMillis
+
+                    val dayLogs = logList.filter { it.timestamp in dayStart..dayEnd }
+                    val selfCount = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.quantity }
+                    val sharedCount = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.quantity }
+                    val receivedCount = dayLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
+                    val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
+                    val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
+                    val receivedSaved = receivedCount * 1.25
+
+                    trend.add(
+                        TrendDataItem(
+                            dateLabel = dayNames[i],
+                            selfCount = selfCount,
+                            sharedCount = sharedCount,
+                            receivedCount = receivedCount,
+                            selfCost = selfCost,
+                            sharedCost = sharedCost,
+                            receivedSaved = receivedSaved,
+                            timestamp = dayStart
+                        )
+                    )
+                }
+            }
+            TrendTimeRange.THIS_MONTH, TrendTimeRange.SPECIFIC_MONTH -> {
+                val targetCal = if (timeRange == TrendTimeRange.THIS_MONTH) Calendar.getInstance() else cal
+                val maxDays = targetCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+                val monthFormat = SimpleDateFormat("M/d", Locale.getDefault())
+
+                for (day in 1..maxDays) {
+                    val dayCal = (targetCal.clone() as Calendar).apply {
+                        set(Calendar.DAY_OF_MONTH, day)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    val dayStart = dayCal.timeInMillis
+                    val dayEnd = (dayCal.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59) }.timeInMillis
+
+                    val dayLogs = logList.filter { it.timestamp in dayStart..dayEnd }
+                    val selfCount = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.quantity }
+                    val sharedCount = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.quantity }
+                    val receivedCount = dayLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
+                    val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
+                    val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
+                    val receivedSaved = receivedCount * 1.25
+
+                    trend.add(
+                        TrendDataItem(
+                            dateLabel = monthFormat.format(dayCal.time),
+                            selfCount = selfCount,
+                            sharedCount = sharedCount,
+                            receivedCount = receivedCount,
+                            selfCost = selfCost,
+                            sharedCost = sharedCost,
+                            receivedSaved = receivedSaved,
+                            timestamp = dayStart
+                        )
+                    )
+                }
+            }
+            TrendTimeRange.SPECIFIC_YEAR -> {
+                val targetYear = cal.get(Calendar.YEAR)
+                val monthNames = arrayOf("1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月")
+                for (month in 0..11) {
+                    val monthStartCal = Calendar.getInstance().apply {
+                        set(Calendar.YEAR, targetYear)
+                        set(Calendar.MONTH, month)
+                        set(Calendar.DAY_OF_MONTH, 1)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    val monthEndCal = (monthStartCal.clone() as Calendar).apply {
+                        set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
+                        set(Calendar.HOUR_OF_DAY, 23)
+                        set(Calendar.MINUTE, 59)
+                        set(Calendar.SECOND, 59)
+                    }
+
+                    val monthLogs = logList.filter { it.timestamp in monthStartCal.timeInMillis..monthEndCal.timeInMillis }
+                    val selfCount = monthLogs.filter { getLogType(it) == "SELF" }.sumOf { it.quantity }
+                    val sharedCount = monthLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.quantity }
+                    val receivedCount = monthLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
+                    val selfCost = monthLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
+                    val sharedCost = monthLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
+                    val receivedSaved = receivedCount * 1.25
+
+                    trend.add(
+                        TrendDataItem(
+                            dateLabel = monthNames[month],
+                            selfCount = selfCount,
+                            sharedCount = sharedCount,
+                            receivedCount = receivedCount,
+                            selfCost = selfCost,
+                            sharedCost = sharedCost,
+                            receivedSaved = receivedSaved,
+                            timestamp = monthStartCal.timeInMillis
+                        )
+                    )
+                }
+            }
+            TrendTimeRange.CUSTOM_RANGE -> {
+                val start = startMs ?: (System.currentTimeMillis() - 14 * 86400000L)
+                val end = endMs ?: System.currentTimeMillis()
+                var current = Calendar.getInstance().apply { timeInMillis = start; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0) }
+
+                while (current.timeInMillis <= end) {
+                    val dayStart = current.timeInMillis
+                    val dayEnd = (current.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59) }.timeInMillis
+
+                    val dayLogs = logList.filter { it.timestamp in dayStart..dayEnd }
+                    val selfCount = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.quantity }
+                    val sharedCount = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.quantity }
+                    val receivedCount = dayLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
+                    val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
+                    val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
+                    val receivedSaved = receivedCount * 1.25
+
+                    trend.add(
+                        TrendDataItem(
+                            dateLabel = sdfDay.format(current.time),
+                            selfCount = selfCount,
+                            sharedCount = sharedCount,
+                            receivedCount = receivedCount,
+                            selfCost = selfCost,
+                            sharedCost = sharedCost,
+                            receivedSaved = receivedSaved,
+                            timestamp = dayStart
+                        )
+                    )
+                    current.add(Calendar.DAY_OF_YEAR, 1)
+                }
+            }
         }
+
         return trend
     }
 
-    private fun calculateStats(logList: List<SmokingLog>, goal: SmokingGoal?): SmokingStats {
-        val now = Calendar.getInstance()
-        
-        // Start of today
+    private fun getLogType(log: SmokingLog): String {
+        return when {
+            log.logType.isNotEmpty() -> log.logType
+            log.isShared -> "SHARED_OUT"
+            else -> "SELF"
+        }
+    }
+
+    private fun calculateStats(logList: List<SmokingLog>, goal: SmokingGoal?, cigList: List<Cigarette>): SmokingStats {
         val todayStart = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
@@ -148,54 +352,95 @@ class SmokingViewModel(
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
 
-        // Start of week (7 days ago)
-        val weekStart = Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_YEAR, -7)
-        }.timeInMillis
+        val weekStart = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }.timeInMillis
+        val monthStart = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -30) }.timeInMillis
 
         val todayLogs = logList.filter { it.timestamp >= todayStart }
         val weekLogs = logList.filter { it.timestamp >= weekStart }
+        val monthLogs = logList.filter { it.timestamp >= monthStart }
 
-        val todaySelf = todayLogs.filter { !it.isShared }.sumOf { it.quantity }
-        val todayShared = todayLogs.filter { it.isShared }.sumOf { it.quantity }
-        val todayTotal = todaySelf + todayShared
-        val todayCost = todayLogs.sumOf { it.cost }
+        val todaySelf = todayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.quantity }
+        val todayShared = todayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.quantity }
+        val todayReceived = todayLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
+        val todayTotal = todaySelf + todayReceived // Personal consumption
+        val todayCost = todayLogs.filter { getLogType(it) != "RECEIVED_IN" }.sumOf { it.cost }
+
+        val activeCig = cigList.firstOrNull { it.isActive } ?: cigList.firstOrNull()
+        val unitPrice = activeCig?.let { it.price / it.packSize.coerceAtLeast(1) } ?: 1.25
+        val todaySavedFromReceived = todayReceived * unitPrice
 
         val weekTotal = weekLogs.sumOf { it.quantity }
-        val weekCost = weekLogs.sumOf { it.cost }
+        val weekCost = weekLogs.filter { getLogType(it) != "RECEIVED_IN" }.sumOf { it.cost }
+
+        val monthTotal = monthLogs.sumOf { it.quantity }
+        val monthCost = monthLogs.filter { getLogType(it) != "RECEIVED_IN" }.sumOf { it.cost }
+
+        val totalSelfCost = logList.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
+        val totalSharedCost = logList.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
+        val totalReceivedSaved = logList.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity } * unitPrice
+        val totalSpent = totalSelfCost + totalSharedCost
 
         val dailyLimit = goal?.dailyLimit ?: 10
-        val isOverLimit = todaySelf > dailyLimit // Only count self smoked against health limits
+        val isOverLimit = (todaySelf + todayReceived) > dailyLimit
 
-        // Calculate money saved: if limit was e.g. 15, and we smoked 10, we saved 5 cigarettes worth of money.
-        // We calculate saved money comparing actual self smoked vs limit for active days
-        // To make it fun, let's say average price of cigarette is 1.0 (or based on last cigarettes).
-        // Let's find historical savings or simple saving counter.
-        // Let's say: (Limit - Today's Smoked Self) * Average Cigarette Cost. If we smoked less, we saved.
-        val avgCigaretteCost = if (todayLogs.isNotEmpty()) todayCost / todayTotal.coerceAtLeast(1) else 1.25
-        val todaySavedCount = (dailyLimit - todaySelf).coerceAtLeast(0)
-        val todaySavedMoney = todaySavedCount * avgCigaretteCost
-
-        // Let's do cumulative saved money:
-        val cumulativeSavedMoney = todaySavedMoney + 12.50 // add a nice baseline savings
+        val todaySavedCount = (dailyLimit - (todaySelf + todayReceived)).coerceAtLeast(0)
+        val todaySavedMoney = todaySavedCount * unitPrice + todaySavedFromReceived
 
         return SmokingStats(
             todaySelfCount = todaySelf,
             todaySharedCount = todayShared,
+            todayReceivedCount = todayReceived,
             todayTotalCount = todayTotal,
             todayCost = todayCost,
+            todaySavedFromReceived = todaySavedFromReceived,
             weekTotalCount = weekTotal,
             weekCost = weekCost,
-            totalSavedMoney = cumulativeSavedMoney,
+            monthTotalCount = monthTotal,
+            monthCost = monthCost,
+            totalSelfCost = totalSelfCost,
+            totalSharedCost = totalSharedCost,
+            totalReceivedSaved = totalReceivedSaved,
+            totalSpent = totalSpent,
+            totalSavedMoney = todaySavedMoney,
             currentGoalLimit = dailyLimit,
             isOverLimit = isOverLimit
         )
     }
 
     // Database actions
-    fun addCigarette(name: String, price: Double, packSize: Int) {
+    fun addCigarette(
+        name: String,
+        price: Double,
+        packSize: Int,
+        priceType: String = "PACK",
+        cartonPrice: Double = price * 10,
+        packsPerCarton: Int = 10
+    ) {
         viewModelScope.launch {
-            repository.insertCigarette(Cigarette(name = name, price = price, packSize = packSize))
+            val calculatedPrice = if (priceType == "CARTON") cartonPrice / packsPerCarton.coerceAtLeast(1) else price
+            repository.insertCigarette(
+                Cigarette(
+                    name = name,
+                    price = calculatedPrice,
+                    packSize = packSize,
+                    priceType = priceType,
+                    cartonPrice = cartonPrice,
+                    packsPerCarton = packsPerCarton,
+                    isActive = cigarettes.value.isEmpty()
+                )
+            )
+        }
+    }
+
+    fun updateCigarette(cigarette: Cigarette) {
+        viewModelScope.launch {
+            repository.updateCigarette(cigarette)
+        }
+    }
+
+    fun setActiveCigarette(cigaretteId: Int) {
+        viewModelScope.launch {
+            repository.setActiveCigarette(cigaretteId)
         }
     }
 
@@ -205,23 +450,30 @@ class SmokingViewModel(
         }
     }
 
-    fun addSmokingLog(cigaretteId: Int, quantity: Int, isShared: Boolean, note: String, customTime: Long? = null) {
+    fun addSmokingLog(
+        cigaretteId: Int,
+        quantity: Int,
+        logType: String, // "SELF", "SHARED_OUT", "RECEIVED_IN"
+        note: String,
+        customTime: Long? = null
+    ) {
         viewModelScope.launch {
-            val cigarette = repository.getCigaretteById(cigaretteId)
+            val cigarette = repository.getCigaretteById(cigaretteId) ?: cigarettes.value.firstOrNull()
             val price = cigarette?.price ?: 20.0
             val packSize = cigarette?.packSize ?: 20
-            val costOfEvent = (quantity.toDouble() / packSize) * price
+
+            val costOfEvent = if (logType == "RECEIVED_IN") 0.0 else (quantity.toDouble() / packSize) * price
 
             val log = SmokingLog(
-                cigaretteId = cigaretteId,
+                cigaretteId = cigarette?.id ?: cigaretteId,
                 quantity = quantity,
-                isShared = isShared,
+                isShared = (logType == "SHARED_OUT"),
+                logType = logType,
                 cost = costOfEvent,
                 note = note,
                 timestamp = customTime ?: System.currentTimeMillis()
             )
             repository.insertLog(log)
-            // Re-fetch smart advice when a new log is recorded
             fetchAiAdvice()
         }
     }
@@ -244,6 +496,121 @@ class SmokingViewModel(
             repository.insertGoal(goal)
             fetchAiAdvice()
         }
+    }
+
+    // Toggle Demo Data Mode
+    fun toggleDemoMode(enabled: Boolean) {
+        isDemoMode.value = enabled
+        viewModelScope.launch {
+            if (enabled) {
+                seedDemoData()
+            } else {
+                repository.deleteDemoLogs()
+            }
+            fetchAiAdvice()
+        }
+    }
+
+    private suspend fun seedDemoData() {
+        val activeCigs = cigarettes.value
+        val defaultCigId = activeCigs.firstOrNull()?.id ?: 1
+        val packPrice = activeCigs.firstOrNull()?.price ?: 25.0
+        val packSize = activeCigs.firstOrNull()?.packSize ?: 20
+        val unitPrice = packPrice / packSize
+
+        val demoLogs = ArrayList<SmokingLog>()
+        val cal = Calendar.getInstance()
+
+        // Generate 60 days of historical demo logs
+        for (dayOffset in 60 downTo 0) {
+            val dayCal = (cal.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_YEAR, -dayOffset)
+            }
+
+            // Morning log (~8:30 AM)
+            val morningCal = (dayCal.clone() as Calendar).apply {
+                set(Calendar.HOUR_OF_DAY, 8)
+                set(Calendar.MINUTE, 20 + Random.nextInt(20))
+            }
+            demoLogs.add(
+                SmokingLog(
+                    cigaretteId = defaultCigId,
+                    quantity = 1,
+                    logType = "SELF",
+                    isShared = false,
+                    cost = unitPrice,
+                    note = "晨起唤醒烟",
+                    timestamp = morningCal.timeInMillis,
+                    isDemo = true
+                )
+            )
+
+            // Afternoon log (~13:00 PM) - 80% chance
+            if (Random.nextFloat() > 0.20) {
+                val noonCal = (dayCal.clone() as Calendar).apply {
+                    set(Calendar.HOUR_OF_DAY, 13)
+                    set(Calendar.MINUTE, 10 + Random.nextInt(30))
+                }
+                val isShared = Random.nextFloat() > 0.65
+                val logType = if (isShared) "SHARED_OUT" else "SELF"
+                demoLogs.add(
+                    SmokingLog(
+                        cigaretteId = defaultCigId,
+                        quantity = 1,
+                        logType = logType,
+                        isShared = isShared,
+                        cost = unitPrice,
+                        note = if (isShared) "饭后散烟" else "饭后提神",
+                        timestamp = noonCal.timeInMillis,
+                        isDemo = true
+                    )
+                )
+            }
+
+            // Social event log (~18:30 PM) - 60% chance
+            if (Random.nextFloat() > 0.40) {
+                val socialCal = (dayCal.clone() as Calendar).apply {
+                    set(Calendar.HOUR_OF_DAY, 18)
+                    set(Calendar.MINUTE, 40 + Random.nextInt(40))
+                }
+                val isReceived = Random.nextFloat() > 0.50
+                val logType = if (isReceived) "RECEIVED_IN" else "SHARED_OUT"
+                demoLogs.add(
+                    SmokingLog(
+                        cigaretteId = defaultCigId,
+                        quantity = 1,
+                        logType = logType,
+                        isShared = (logType == "SHARED_OUT"),
+                        cost = if (isReceived) 0.0 else unitPrice,
+                        note = if (isReceived) "同事递烟" else "社交社交",
+                        timestamp = socialCal.timeInMillis,
+                        isDemo = true
+                    )
+                )
+            }
+
+            // Night log (~22:00 PM) - 70% chance
+            if (Random.nextFloat() > 0.30) {
+                val nightCal = (dayCal.clone() as Calendar).apply {
+                    set(Calendar.HOUR_OF_DAY, 22)
+                    set(Calendar.MINUTE, Random.nextInt(45))
+                }
+                demoLogs.add(
+                    SmokingLog(
+                        cigaretteId = defaultCigId,
+                        quantity = 1,
+                        logType = "SELF",
+                        isShared = false,
+                        cost = unitPrice,
+                        note = "睡前放松",
+                        timestamp = nightCal.timeInMillis,
+                        isDemo = true
+                    )
+                )
+            }
+        }
+
+        repository.insertLogs(demoLogs)
     }
 
     // Cloud backup actions
@@ -273,37 +640,39 @@ class SmokingViewModel(
         viewModelScope.launch {
             try {
                 val currentStats = stats.value
-                val trend = last7DaysTrend.value
+                val trend = trendData.value
                 val totalSelf7Days = trend.sumOf { it.selfCount }
                 val totalShared7Days = trend.sumOf { it.sharedCount }
+                val totalReceived7Days = trend.sumOf { it.receivedCount }
 
                 val prompt = """
                     你是一位专业且充满同理心的戒烟健康教练。请根据用户的以下吸烟数据，生成一份有洞察力、温暖且高度个性化的健康提醒和戒烟建议：
                     
                     【今日吸烟统计】
-                    - 自己抽：${currentStats.todaySelfCount} 支
-                    - 分享给他人抽：${currentStats.todaySharedCount} 支
+                    - 自购自抽：${currentStats.todaySelfCount} 支
+                    - 社交递烟：${currentStats.todaySharedCount} 支
+                    - 社交接烟（他人递烟）：${currentStats.todayReceivedCount} 支
                     - 今日花费：${String.format(Locale.getDefault(), "%.2f", currentStats.todayCost)} 元
                     
-                    【近期（近7天）统计】
-                    - 7天自己总共抽：$totalSelf7Days 支
-                    - 7天给他人递烟：$totalShared7Days 支
-                    - 本周花费估算：${String.format(Locale.getDefault(), "%.2f", currentStats.weekCost)} 元
+                    【近期统计】
+                    - 自抽总数：$totalSelf7Days 支
+                    - 给他人递烟：$totalShared7Days 支
+                    - 接他人递烟：$totalReceived7Days 支
+                    - 近期支出：${String.format(Locale.getDefault(), "%.2f", currentStats.weekCost)} 元
                     
                     【当前戒烟目标】
                     - 每日吸烟上限：${currentStats.currentGoalLimit} 支
                     - 目标达成状态：${if (currentStats.isOverLimit) "⚠️ 已超标！" else "✅ 严格遵守中！"}
                     
                     【健康提醒需求】
-                    1. 简短总结今日烟瘾趋势。如果是递烟分享较多，提醒社交吸烟的心理机制；如果是自己抽较多，给予健康的关怀与警示。
-                    2. 提供 2 条实用的、根据今天数据定制的戒烟小贴士（例如：深呼吸、用口香糖替代、减少社交聚会烟雾、控制情绪等）。
+                    1. 简短总结今日烟瘾趋势。分析自抽、社交递烟与社交接烟（他人递烟）的特点；
+                    2. 提供 2 条实用的、根据今天数据定制的戒烟与社交控烟小贴士；
                     3. 给出温馨鼓励：字数在 150 字以内，简明扼要，分段清晰，使用友好和鼓舞人心的 emoji！
                 """.trimIndent()
 
                 val responseText = withContext(Dispatchers.IO) {
                     val apiKey = BuildConfig.GEMINI_API_KEY
                     if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-                        // Return mock advice if API key is not configured to avoid crashing and maintain UX
                         getMockAdvice(currentStats)
                     } else {
                         val request = GenerateContentRequest(
@@ -322,16 +691,15 @@ class SmokingViewModel(
     }
 
     private fun getMockAdvice(stats: SmokingStats): String {
-        return if (stats.todaySelfCount == 0) {
-            "🌟 **干得太漂亮了！** 截至目前，你今天还没有抽过一支烟！你的肺正在欢呼，身体正在净化。继续保持，今天省下的每一分钱和吸入的每一口新鲜空气，都是你对未来最棒的投资！💪🏼\n\n💡 **今日贴士**:\n- 烟瘾来袭时，尝试喝一大口冰水或深呼吸 3 次。\n- 远离吸烟社交圈，散步 5 分钟换个心情。"
+        return if (stats.todaySelfCount == 0 && stats.todayReceivedCount == 0) {
+            "🌟 **干得太漂亮了！** 截至目前，你今天还没有抽过一支烟！你的肺正在欢呼，身体正在净化。继续保持！💪🏼\n\n💡 **今日贴士**:\n- 烟瘾来袭时，尝试喝一口冰水或做 3 次深呼吸。\n- 社交递烟时多用口香糖递给对方，换种健康的社交方式。"
         } else if (stats.isOverLimit) {
-            "⚠️ **今日温馨提醒**：你今天已经抽了 ${stats.todaySelfCount} 支烟，超出了设定的 ${stats.currentGoalLimit} 支上限。不要气馁！戒烟是一个长期的旅程，偶尔的超标只是路上的一个小水坑。让我们洗个脸，调整呼吸，今晚就到此为止吧！🍀\n\n💡 **今日贴士**:\n- 把烟盒和打火机放进抽屉深处，增加获取的难度。\n- 递给朋友的烟多于自己，说明社交诱惑很大。尝试学会温和拒绝：“最近在养肺，你抽就好啦！”"
+            "⚠️ **今日温馨提醒**：你今天共抽了 ${stats.todayTotalCount} 支烟（自抽 ${stats.todaySelfCount} 支，接烟 ${stats.todayReceivedCount} 支），超出了 ${stats.currentGoalLimit} 支上限。不要灰心！调整呼吸，今晚就到此为止吧！🍀\n\n💡 **今日贴士**:\n- 面对他人递烟，学会礼貌拒绝：“最近在养肺，多谢好意啦！”\n- 社交场合多手里拿杯茶水，减少接烟手势习惯。"
         } else {
-            "👍 **保持得不错！** 今天你抽了 ${stats.todaySelfCount} 支，控制在 ${stats.currentGoalLimit} 支的目标范围之内。这是一次了不起的自律表现！继续保持平稳的节奏，一步一步，你离彻底告别烟瘾越来越近了。加油！✨\n\n💡 **今日贴士**:\n- 用一杯热茶或薄荷糖替代饭后那支烟。\n- 记录下每一次成功克制烟瘾的瞬间，这会增强你的心理防线。"
+            "👍 **保持得不错！** 今天你自抽 ${stats.todaySelfCount} 支，接烟 ${stats.todayReceivedCount} 支，控制在 ${stats.currentGoalLimit} 支的目标范围之内。这是一次了不起的自律表现！✨\n\n💡 **今日贴士**:\n- 饭后用薄荷糖替代烟草，打断习惯性烟瘾。\n- 记录下每次成功克制烟瘾的瞬间，为你点赞！"
         }
     }
 
-    // Helper for delay inside coroutine
     private suspend fun delay(ms: Long) {
         withContext(Dispatchers.Default) {
             kotlinx.coroutines.delay(ms)
@@ -355,3 +723,4 @@ class SmokingViewModelFactory(private val context: Context) : ViewModelProvider.
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
+

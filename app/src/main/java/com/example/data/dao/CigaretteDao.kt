@@ -11,18 +11,31 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CigaretteDao {
-    @Query("SELECT * FROM cigarettes ORDER BY name ASC")
+    @Query("SELECT * FROM cigarettes ORDER BY isActive DESC, name ASC")
     fun getAllCigarettes(): Flow<List<Cigarette>>
 
     @Query("SELECT * FROM cigarettes WHERE id = :id LIMIT 1")
     suspend fun getCigaretteById(id: Int): Cigarette?
 
+    @Query("SELECT * FROM cigarettes WHERE isActive = 1 LIMIT 1")
+    suspend fun getActiveCigarette(): Cigarette?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCigarette(cigarette: Cigarette): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCigarettes(cigarettes: List<Cigarette>): List<Long>
 
     @Update
     suspend fun updateCigarette(cigarette: Cigarette)
 
     @Delete
     suspend fun deleteCigarette(cigarette: Cigarette)
+
+    @Query("UPDATE cigarettes SET isActive = 0")
+    suspend fun clearActiveStatus()
+
+    @Query("UPDATE cigarettes SET isActive = 1 WHERE id = :id")
+    suspend fun setActiveStatus(id: Int)
 }
+

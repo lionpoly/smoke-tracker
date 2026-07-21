@@ -19,9 +19,16 @@ interface SmokingLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLog(log: SmokingLog): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLogs(logs: List<SmokingLog>): List<Long>
+
     @Delete
     suspend fun deleteLog(log: SmokingLog)
+
+    @Query("DELETE FROM smoking_logs WHERE isDemo = 1")
+    suspend fun deleteDemoLogs()
 
     @Query("DELETE FROM smoking_logs")
     suspend fun deleteAllLogs()
 }
+

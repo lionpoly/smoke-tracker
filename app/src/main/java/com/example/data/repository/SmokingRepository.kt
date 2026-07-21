@@ -33,6 +33,11 @@ class SmokingRepository(
         cigaretteDao.updateCigarette(cigarette)
     }
 
+    suspend fun setActiveCigarette(id: Int) {
+        cigaretteDao.clearActiveStatus()
+        cigaretteDao.setActiveStatus(id)
+    }
+
     suspend fun deleteCigarette(cigarette: Cigarette) {
         cigaretteDao.deleteCigarette(cigarette)
     }
@@ -41,8 +46,16 @@ class SmokingRepository(
         return smokingLogDao.insertLog(log)
     }
 
+    suspend fun insertLogs(logs: List<SmokingLog>): List<Long> {
+        return smokingLogDao.insertLogs(logs)
+    }
+
     suspend fun deleteLog(log: SmokingLog) {
         smokingLogDao.deleteLog(log)
+    }
+
+    suspend fun deleteDemoLogs() {
+        smokingLogDao.deleteDemoLogs()
     }
 
     suspend fun deleteAllLogs() {

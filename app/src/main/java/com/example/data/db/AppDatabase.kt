@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [Cigarette::class, SmokingLog::class, SmokingGoal::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -36,6 +36,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smoking_tracker_db"
                 )
+                .fallbackToDestructiveMigration()
                 .addCallback(DatabaseCallback(scope))
                 .build()
                 INSTANCE = instance
@@ -61,13 +62,37 @@ abstract class AppDatabase : RoomDatabase() {
             ) {
                 // Populate default cigarette brands
                 cigaretteDao.insertCigarette(
-                    Cigarette(name = "经典原味 (Classic Original)", price = 25.0, packSize = 20)
+                    Cigarette(
+                        name = "中华 (软中华 / Soft Chunghwa)",
+                        price = 65.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 650.0,
+                        packsPerCarton = 10,
+                        isActive = true
+                    )
                 )
                 cigaretteDao.insertCigarette(
-                    Cigarette(name = "薄荷双爆 (Menthol Blast)", price = 30.0, packSize = 20)
+                    Cigarette(
+                        name = "炫赫门 (南京细支 / Xuanhemen)",
+                        price = 18.0,
+                        packSize = 20,
+                        priceType = "CARTON",
+                        cartonPrice = 180.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
                 )
                 cigaretteDao.insertCigarette(
-                    Cigarette(name = "炫赫门 (Xuanhemen Slims)", price = 18.0, packSize = 20)
+                    Cigarette(
+                        name = "万宝路 (薄荷双爆 / Marlboro Double Burst)",
+                        price = 30.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 300.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
                 )
 
                 // Populate a default starting goal (e.g. limit to 10 cigarettes per day)
