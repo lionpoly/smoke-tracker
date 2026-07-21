@@ -16,6 +16,9 @@ import com.example.data.model.SmokingLog
 import com.example.data.repository.SmokingRepository
 import com.example.data.sync.CloudSyncManager
 import com.example.data.sync.SyncState
+import com.example.ui.i18n.AppColorPreset
+import com.example.ui.i18n.AppLanguage
+import com.example.ui.i18n.AppThemeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,20 +41,24 @@ sealed interface AiAdviceState {
     data class Error(val error: String) : AiAdviceState
 }
 
-enum class TrendTimeRange(val label: String) {
-    LAST_7_DAYS("近7天"),
-    THIS_WEEK("本周"),
-    THIS_MONTH("本月"),
-    SPECIFIC_MONTH("按月份"),
-    SPECIFIC_YEAR("按年份"),
-    CUSTOM_RANGE("自定义范围")
+enum class TrendTimeRange(val labelZh: String, val labelEn: String) {
+    LAST_7_DAYS("近7天", "7 Days"),
+    THIS_WEEK("本周", "This Week"),
+    THIS_MONTH("本月", "This Month"),
+    SPECIFIC_MONTH("按月份", "By Month"),
+    SPECIFIC_YEAR("按年份", "By Year"),
+    CUSTOM_RANGE("自定义范围", "Custom Range");
+
+    fun getLabel(lang: AppLanguage): String = if (lang == AppLanguage.EN) labelEn else labelZh
 }
 
-enum class ChartType(val label: String) {
-    BAR("柱状图"),
-    LINE("折线图"),
-    SCATTER("散点图"),
-    PIE("扇形图")
+enum class ChartType(val labelZh: String, val labelEn: String) {
+    BAR("柱状图", "Bar"),
+    LINE("折线图", "Line"),
+    SCATTER("散点图", "Scatter"),
+    PIE("扇形图", "Pie");
+
+    fun getLabel(lang: AppLanguage): String = if (lang == AppLanguage.EN) labelEn else labelZh
 }
 
 data class TrendDataItem(
@@ -87,8 +94,31 @@ data class SmokingStats(
 
 class SmokingViewModel(
     private val repository: SmokingRepository,
-    private val syncManager: CloudSyncManager
+    private val syncManager: CloudSyncManager,
+    private val context: Context? = null
 ) : ViewModel() {
+
+    val appLanguage = MutableStateFlow(AppLanguage.ZH)
+    val appThemeMode = MutableStateFlow(AppThemeMode.SYSTEM)
+    val appColorPreset = MutableStateFlow(AppColorPreset.DEFAULT)
+
+    fun setAppLanguage(lang: AppLanguage) {
+        appLanguage.value = lang
+        context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            ?.edit()?.putString("language", lang.code)?.apply()
+    }
+
+    fun setAppThemeMode(mode: AppThemeMode) {
+        appThemeMode.value = mode
+        context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            ?.edit()?.putString("theme_mode", mode.code)?.apply()
+    }
+
+    fun setAppColorPreset(preset: AppColorPreset) {
+        appColorPreset.value = preset
+        context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            ?.edit()?.putString("color_preset", preset.code)?.apply()
+    }
 
     val cigarettes: StateFlow<List<Cigarette>> = repository.allCigarettes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -129,6 +159,17 @@ class SmokingViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SmokingStats())
 
     init {
+        context?.let { ctx ->
+            val prefs = ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            val langCode = prefs.getString("language", AppLanguage.ZH.code) ?: AppLanguage.ZH.code
+            val themeCode = prefs.getString("theme_mode", AppThemeMode.SYSTEM.code) ?: AppThemeMode.SYSTEM.code
+            val colorCode = prefs.getString("color_preset", AppColorPreset.DEFAULT.code) ?: AppColorPreset.DEFAULT.code
+
+            appLanguage.value = AppLanguage.values().firstOrNull { it.code == langCode } ?: AppLanguage.ZH
+            appThemeMode.value = AppThemeMode.values().firstOrNull { it.code == themeCode } ?: AppThemeMode.SYSTEM
+            appColorPreset.value = AppColorPreset.values().firstOrNull { it.code == colorCode } ?: AppColorPreset.DEFAULT
+        }
+
         viewModelScope.launch {
             delay(1500)
             fetchAiAdvice()
@@ -718,7 +759,7 @@ class SmokingViewModelFactory(private val context: Context) : ViewModelProvider.
             )
             val syncManager = CloudSyncManager(context.applicationContext, repository)
             @Suppress("UNCHECKED_CAST")
-            return SmokingViewModel(repository, syncManager) as T
+            return SmokingViewModel(repository, syncManager, context.applicationContext) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
