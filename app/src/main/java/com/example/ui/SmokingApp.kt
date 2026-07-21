@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,8 +28,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -559,7 +563,7 @@ fun StatCard(
     title: String,
     value: String,
     subtitle: String,
-    color: Color,
+    color: Color = MaterialTheme.colorScheme.surface,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -584,8 +588,11 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     val selectedChartType by viewModel.selectedChartType.collectAsStateWithLifecycle()
     val trendData by viewModel.trendData.collectAsStateWithLifecycle()
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
+    val goal by viewModel.activeGoal.collectAsStateWithLifecycle()
+    val maxIntervalHours by viewModel.maxIntervalThresholdHours.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
+    var selectedChartIndex by remember { mutableIntStateOf(-1) }
 
     Column(
         modifier = Modifier
@@ -611,7 +618,10 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             TrendTimeRange.values().forEach { range ->
                 FilterChip(
                     selected = selectedTimeRange == range,
-                    onClick = { viewModel.selectedTimeRange.value = range },
+                    onClick = {
+                        viewModel.selectedTimeRange.value = range
+                        selectedChartIndex = -1
+                    },
                     label = { Text(range.getLabel(lang), fontSize = 12.sp) },
                     leadingIcon = if (selectedTimeRange == range) {
                         { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
@@ -772,27 +782,248 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             }
         }
 
-        // Chart Type Selector
-        Text(
-            text = AppStrings.get("chart_type_title", lang),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
+        // ================= SECTION 1: 自我吸烟量与行为趋势分析 (Self-Smoking Trend Analysis) =================
+        val totalSelfCount = trendData.sumOf { it.selfCount }
+        val periodDays = trendData.size.coerceAtLeast(1)
+        val dailyAvgSelf = totalSelfCount.toFloat() / periodDays
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        val validIntervals = trendData.filter { it.avgIntervalMinutes > 0 }.map { it.avgIntervalMinutes }
+        val overallAvgInterval = if (validIntervals.isNotEmpty()) validIntervals.average().toInt() else 0
+
+        val peakSlots = trendData.filter { it.peakHourSlot != "无打卡" }.groupBy { it.peakHourSlot }
+        val overallPeakSlot = peakSlots.maxByOrNull { it.value.size }?.key ?: "14:00 - 16:00"
+
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            ChartType.values().forEach { type ->
-                FilterChip(
-                    selected = selectedChartType == type,
-                    onClick = { viewModel.selectedChartType.value = type },
-                    label = { Text(type.getLabel(lang), fontSize = 12.sp) }
-                )
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.Analytics,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = AppStrings.get("self_trend_section_title", lang),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "聚焦自抽量、打卡间隔与高发吸烟时段",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                // 4 Stat Summary Cards Grid (文字卡片)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StatCard(
+                        title = AppStrings.get("stat_daily_avg_self", lang),
+                        value = String.format(Locale.getDefault(), "%.1f 支", dailyAvgSelf),
+                        subtitle = "${AppStrings.get("stat_total_period_self", lang)}: ${totalSelfCount}支",
+                        modifier = Modifier.weight(1f)
+                    )
+                    StatCard(
+                        title = AppStrings.get("stat_avg_interval", lang),
+                        value = if (overallAvgInterval > 0) "${overallAvgInterval}分钟" else AppStrings.get("no_interval_data", lang),
+                        subtitle = "已排除>${maxIntervalHours}小时间隔",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StatCard(
+                        title = AppStrings.get("stat_peak_hours", lang),
+                        value = overallPeakSlot,
+                        subtitle = "吸烟最密集窗口",
+                        modifier = Modifier.weight(1f)
+                    )
+                    val dailyLimit = goal?.dailyLimit ?: 15
+                    val statusText = if (dailyAvgSelf <= dailyLimit) "🟢 控烟达标" else "🟠 超标预警"
+                    StatCard(
+                        title = AppStrings.get("insight_title", lang),
+                        value = statusText,
+                        subtitle = "限制目标: ${dailyLimit}支/天",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Behavioral Insight Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 1.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Lightbulb,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = if (dailyAvgSelf > (goal?.dailyLimit ?: 15)) {
+                                "近期自抽量偏高，主要集中在 [${overallPeakSlot}]。建议在该时段常备无糖口香糖或深呼吸分散注意力，并尝试拉长单支间隔！"
+                            } else {
+                                "当前自抽习惯控制良好！平均间隔为 ${if (overallAvgInterval > 0) "${overallAvgInterval}分钟" else "规律良好"}，请保持有节奏的减量进度。"
+                            },
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 
-        // Financial Expenditure Analysis Card
+        // Interactive Chart Card (图表卡片 + 交互)
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${selectedTimeRange.getLabel(lang)} - ${selectedChartType.getLabel(lang)}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ChartType.values().forEach { type ->
+                            FilterChip(
+                                selected = selectedChartType == type,
+                                onClick = { viewModel.selectedChartType.value = type },
+                                label = { Text(type.getLabel(lang), fontSize = 10.sp) },
+                                modifier = Modifier.height(28.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Interactive Hint
+                Text(
+                    text = AppStrings.get("chart_click_hint", lang),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Legend
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    LegendItem(color = MaterialTheme.colorScheme.primary, text = "自购自抽")
+                    Spacer(modifier = Modifier.width(16.dp))
+                    LegendItem(color = MaterialTheme.colorScheme.secondary, text = "社交递烟")
+                    Spacer(modifier = Modifier.width(16.dp))
+                    LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Chart Graphic Area
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                ) {
+                    if (trendData.isEmpty()) {
+                        Text("暂无当前时段的数据记录", modifier = Modifier.align(Alignment.Center), color = Color.Gray)
+                    } else {
+                        TrendChartComposable(
+                            trendData = trendData,
+                            chartType = selectedChartType,
+                            selectedIndex = selectedChartIndex,
+                            onSelectIndex = { selectedChartIndex = it }
+                        )
+                    }
+                }
+
+                // Interactive Click Popover Detail Card (点击数据节点交互详情)
+                AnimatedVisibility(visible = selectedChartIndex in trendData.indices) {
+                    if (selectedChartIndex in trendData.indices) {
+                        val item = trendData[selectedChartIndex]
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = String.format(AppStrings.get("selected_detail_title", lang), item.dateLabel),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    IconButton(
+                                        onClick = { selectedChartIndex = -1 },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Rounded.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text("🚬 自抽: ${item.selfCount} 支", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("🤝 递烟: ${item.sharedCount} 支", fontSize = 11.sp, color = Color.Gray)
+                                        Text("🎁 接烟: ${item.receivedCount} 支", fontSize = 11.sp, color = Color.Gray)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("⏱️ 平均间隔: ${if (item.avgIntervalMinutes > 0) "${item.avgIntervalMinutes}分钟" else "单次打卡"}", fontSize = 11.sp)
+                                        Text("⏰ 高峰窗口: ${item.peakHourSlot}", fontSize = 11.sp)
+                                        Text("💰 当日开销: ¥${String.format(Locale.getDefault(), "%.2f", item.selfCost + item.sharedCost)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ================= SECTION 2: 吸烟开销与社交性价比分析 (Expenditure Analysis) =================
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -841,54 +1072,6 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 }
             }
         }
-
-        // Custom Canvas Chart rendering
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "${selectedTimeRange.getLabel(lang)} - ${selectedChartType.getLabel(lang)}",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Legend
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    LegendItem(color = MaterialTheme.colorScheme.primary, text = "自购自抽")
-                    Spacer(modifier = Modifier.width(16.dp))
-                    LegendItem(color = MaterialTheme.colorScheme.secondary, text = "社交递烟")
-                    Spacer(modifier = Modifier.width(16.dp))
-                    LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Chart Graphic Area
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(240.dp)
-                ) {
-                    if (trendData.isEmpty()) {
-                        Text("暂无当前时段的数据记录", modifier = Modifier.align(Alignment.Center), color = Color.Gray)
-                    } else {
-                        TrendChartComposable(
-                            trendData = trendData,
-                            chartType = selectedChartType
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -908,7 +1091,9 @@ fun LegendItem(color: Color, text: String) {
 @Composable
 fun TrendChartComposable(
     trendData: List<TrendDataItem>,
-    chartType: ChartType
+    chartType: ChartType,
+    selectedIndex: Int = -1,
+    onSelectIndex: (Int) -> Unit = {}
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val secondaryColor = MaterialTheme.colorScheme.secondary
@@ -916,28 +1101,94 @@ fun TrendChartComposable(
 
     val maxVal = trendData.maxOfOrNull { it.selfCount + it.sharedCount + it.receivedCount }?.coerceAtLeast(5) ?: 5
 
-    Canvas(modifier = Modifier.fillMaxSize()) {
+    val leftMargin = 28.dp
+    val bottomMargin = 28.dp
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(trendData, chartType) {
+                detectTapGestures { offset ->
+                    val leftPx = leftMargin.toPx()
+                    val bottomPx = bottomMargin.toPx()
+                    val usableW = size.width - leftPx
+                    val stepX = usableW / trendData.size.coerceAtLeast(1)
+                    val x = offset.x - leftPx
+                    if (x >= 0 && stepX > 0) {
+                        val clickedIdx = (x / stepX).toInt().coerceIn(0, trendData.size - 1)
+                        onSelectIndex(if (selectedIndex == clickedIdx) -1 else clickedIdx)
+                    }
+                }
+            }
+    ) {
         val width = size.width
         val height = size.height
-        val bottomMargin = 40f
-        val topMargin = 20f
-        val usableHeight = height - bottomMargin - topMargin
+        val leftPx = leftMargin.toPx()
+        val bottomPx = bottomMargin.toPx()
+        val topPx = 16.dp.toPx()
+        val usableHeight = height - bottomPx - topPx
+        val usableWidth = width - leftPx
         val itemCount = trendData.size
-        val stepX = width / itemCount.coerceAtLeast(1)
+        val stepX = usableWidth / itemCount.coerceAtLeast(1)
 
+        // 1. Draw Y-Axis Gridlines & Scale Numbers
+        val gridY0 = height - bottomPx
+        val gridYMid = height - bottomPx - usableHeight / 2f
+        val gridYMax = height - bottomPx - usableHeight
+
+        drawLine(color = Color.LightGray.copy(alpha = 0.4f), start = Offset(leftPx, gridY0), end = Offset(width, gridY0), strokeWidth = 1.dp.toPx())
+        drawLine(color = Color.LightGray.copy(alpha = 0.25f), start = Offset(leftPx, gridYMid), end = Offset(width, gridYMid), strokeWidth = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f)))
+        drawLine(color = Color.LightGray.copy(alpha = 0.25f), start = Offset(leftPx, gridYMax), end = Offset(width, gridYMax), strokeWidth = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f)))
+
+        val scalePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.GRAY
+            textSize = 9.sp.toPx()
+            isAntiAlias = true
+        }
+        drawContext.canvas.nativeCanvas.drawText("0", 4f, gridY0 + 3f, scalePaint)
+        drawContext.canvas.nativeCanvas.drawText("${maxVal / 2}", 4f, gridYMid + 3f, scalePaint)
+        drawContext.canvas.nativeCanvas.drawText("$maxVal", 4f, gridYMax + 3f, scalePaint)
+
+        // 2. Draw X-Axis Date Labels
+        trendData.forEachIndexed { index, item ->
+            val xCenter = leftPx + index * stepX + stepX / 2f
+            val isSelected = index == selectedIndex
+            val labelPaint = android.graphics.Paint().apply {
+                color = if (isSelected) android.graphics.Color.parseColor("#1B5E20") else android.graphics.Color.GRAY
+                textSize = if (isSelected) 10.sp.toPx() else 8.5.sp.toPx()
+                textAlign = android.graphics.Paint.Align.CENTER
+                isFakeBoldText = isSelected
+                isAntiAlias = true
+            }
+            drawContext.canvas.nativeCanvas.drawText(item.dateLabel, xCenter, height - 4f, labelPaint)
+        }
+
+        // 3. Highlight Selected Crosshair Line
+        if (selectedIndex in 0 until itemCount) {
+            val selXCenter = leftPx + selectedIndex * stepX + stepX / 2f
+            drawLine(
+                color = primaryColor.copy(alpha = 0.5f),
+                start = Offset(selXCenter, topPx),
+                end = Offset(selXCenter, height - bottomPx),
+                strokeWidth = 1.5.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))
+            )
+        }
+
+        // 4. Render Chart Format
         when (chartType) {
             ChartType.BAR -> {
-                val barWidth = (stepX * 0.5f).coerceAtMost(24.dp.toPx())
+                val barWidth = (stepX * 0.5f).coerceIn(8.dp.toPx(), 22.dp.toPx())
                 trendData.forEachIndexed { index, item ->
-                    val x = index * stepX + (stepX - barWidth) / 2
+                    val x = leftPx + index * stepX + (stepX - barWidth) / 2
+                    val isSelected = index == selectedIndex
 
                     val selfH = (item.selfCount.toFloat() / maxVal) * usableHeight
                     val sharedH = (item.sharedCount.toFloat() / maxVal) * usableHeight
                     val recH = (item.receivedCount.toFloat() / maxVal) * usableHeight
 
-                    var currentY = height - bottomMargin
+                    var currentY = height - bottomPx
 
-                    // Draw Received bar (Green)
                     if (recH > 0) {
                         drawRect(
                             color = greenColor,
@@ -947,7 +1198,6 @@ fun TrendChartComposable(
                         currentY -= recH
                     }
 
-                    // Draw Shared bar (Secondary)
                     if (sharedH > 0) {
                         drawRect(
                             color = secondaryColor,
@@ -957,12 +1207,22 @@ fun TrendChartComposable(
                         currentY -= sharedH
                     }
 
-                    // Draw Self bar (Primary)
                     if (selfH > 0) {
                         drawRect(
                             color = primaryColor,
                             topLeft = Offset(x, currentY - selfH),
                             size = Size(barWidth, selfH)
+                        )
+                    }
+
+                    if (isSelected) {
+                        val totalH = selfH + sharedH + recH
+                        val barTopY = height - bottomPx - totalH
+                        drawRect(
+                            color = primaryColor,
+                            topLeft = Offset(x - 2.dp.toPx(), barTopY - 2.dp.toPx()),
+                            size = Size(barWidth + 4.dp.toPx(), totalH.coerceAtLeast(4.dp.toPx()) + 4.dp.toPx()),
+                            style = Stroke(width = 2.dp.toPx())
                         )
                     }
                 }
@@ -973,11 +1233,10 @@ fun TrendChartComposable(
                 val pathRec = Path()
 
                 trendData.forEachIndexed { index, item ->
-                    val x = index * stepX + stepX / 2
-
-                    val ySelf = height - bottomMargin - (item.selfCount.toFloat() / maxVal) * usableHeight
-                    val yShared = height - bottomMargin - (item.sharedCount.toFloat() / maxVal) * usableHeight
-                    val yRec = height - bottomMargin - (item.receivedCount.toFloat() / maxVal) * usableHeight
+                    val x = leftPx + index * stepX + stepX / 2
+                    val ySelf = height - bottomPx - (item.selfCount.toFloat() / maxVal) * usableHeight
+                    val yShared = height - bottomPx - (item.sharedCount.toFloat() / maxVal) * usableHeight
+                    val yRec = height - bottomPx - (item.receivedCount.toFloat() / maxVal) * usableHeight
 
                     if (index == 0) {
                         pathSelf.moveTo(x, ySelf)
@@ -989,9 +1248,16 @@ fun TrendChartComposable(
                         pathRec.lineTo(x, yRec)
                     }
 
-                    drawCircle(color = primaryColor, radius = 4.dp.toPx(), center = Offset(x, ySelf))
-                    drawCircle(color = secondaryColor, radius = 4.dp.toPx(), center = Offset(x, yShared))
-                    drawCircle(color = greenColor, radius = 4.dp.toPx(), center = Offset(x, yRec))
+                    val isSelected = index == selectedIndex
+                    val radius = if (isSelected) 6.dp.toPx() else 3.5.dp.toPx()
+
+                    drawCircle(color = primaryColor, radius = radius, center = Offset(x, ySelf))
+                    drawCircle(color = secondaryColor, radius = radius, center = Offset(x, yShared))
+                    drawCircle(color = greenColor, radius = radius, center = Offset(x, yRec))
+
+                    if (isSelected) {
+                        drawCircle(color = primaryColor, radius = 9.dp.toPx(), center = Offset(x, ySelf), style = Stroke(width = 2.dp.toPx()))
+                    }
                 }
 
                 drawPath(pathSelf, color = primaryColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
@@ -1000,19 +1266,23 @@ fun TrendChartComposable(
             }
             ChartType.SCATTER -> {
                 trendData.forEachIndexed { index, item ->
-                    val x = index * stepX + stepX / 2
-                    val ySelf = height - bottomMargin - (item.selfCount.toFloat() / maxVal) * usableHeight
-                    val yShared = height - bottomMargin - (item.sharedCount.toFloat() / maxVal) * usableHeight
-                    val yRec = height - bottomMargin - (item.receivedCount.toFloat() / maxVal) * usableHeight
+                    val x = leftPx + index * stepX + stepX / 2
+                    val ySelf = height - bottomPx - (item.selfCount.toFloat() / maxVal) * usableHeight
+                    val yShared = height - bottomPx - (item.sharedCount.toFloat() / maxVal) * usableHeight
+                    val yRec = height - bottomPx - (item.receivedCount.toFloat() / maxVal) * usableHeight
+
+                    val isSelected = index == selectedIndex
+                    val baseR = if (isSelected) 8.dp.toPx() else 5.5.dp.toPx()
 
                     if (item.selfCount > 0) {
-                        drawCircle(color = primaryColor, radius = 8.dp.toPx(), center = Offset(x, ySelf))
+                        drawCircle(color = primaryColor, radius = baseR, center = Offset(x, ySelf))
+                        if (isSelected) drawCircle(color = primaryColor.copy(alpha = 0.4f), radius = baseR + 4.dp.toPx(), center = Offset(x, ySelf))
                     }
                     if (item.sharedCount > 0) {
-                        drawCircle(color = secondaryColor, radius = 7.dp.toPx(), center = Offset(x, yShared))
+                        drawCircle(color = secondaryColor, radius = baseR - 1.dp.toPx(), center = Offset(x, yShared))
                     }
                     if (item.receivedCount > 0) {
-                        drawCircle(color = greenColor, radius = 6.dp.toPx(), center = Offset(x, yRec))
+                        drawCircle(color = greenColor, radius = baseR - 2.dp.toPx(), center = Offset(x, yRec))
                     }
                 }
             }
@@ -1026,9 +1296,9 @@ fun TrendChartComposable(
                 val sweepShared = (totalShared / grandTotal) * 360f
                 val sweepRec = (totalRec / grandTotal) * 360f
 
-                val diameter = minOf(width, height - bottomMargin) * 0.75f
-                val topLeftX = (width - diameter) / 2
-                val topLeftY = (height - bottomMargin - diameter) / 2
+                val diameter = minOf(usableWidth, usableHeight) * 0.75f
+                val topLeftX = leftPx + (usableWidth - diameter) / 2
+                val topLeftY = topPx + (usableHeight - diameter) / 2
 
                 drawArc(
                     color = primaryColor,
@@ -1344,6 +1614,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
     val themeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
     val colorPreset by viewModel.appColorPreset.collectAsStateWithLifecycle()
+    val maxIntervalHours by viewModel.maxIntervalThresholdHours.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var limitInput by remember { mutableStateOf("") }
@@ -1558,6 +1829,84 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(AppStrings.get("save_goal_btn", lang), fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Expandable Card: Interval Calculation Threshold Settings
+        ExpandableSettingsCard(
+            title = AppStrings.get("interval_filter_card_title", lang),
+            icon = Icons.Rounded.Timer,
+            initialExpanded = false
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = AppStrings.get("interval_threshold_desc", lang),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 16.sp
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = AppStrings.get("interval_threshold_label", lang),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "${maxIntervalHours} 小时",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(4, 6, 8, 12, 24).forEach { hours ->
+                        FilterChip(
+                            selected = maxIntervalHours == hours,
+                            onClick = { viewModel.setMaxIntervalThresholdHours(hours) },
+                            label = { Text("${hours}小时", fontSize = 11.sp) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                var customInput by remember(maxIntervalHours) { mutableStateOf(maxIntervalHours.toString()) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = customInput,
+                        onValueChange = { input ->
+                            customInput = input
+                            input.toIntOrNull()?.let { h ->
+                                if (h in 1..24) {
+                                    viewModel.setMaxIntervalThresholdHours(h)
+                                }
+                            }
+                        },
+                        label = { Text("自定义阀值 X (1-24小时)", fontSize = 11.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = {
+                            val h = customInput.toIntOrNull() ?: 6
+                            viewModel.setMaxIntervalThresholdHours(h)
+                        }
+                    ) {
+                        Text("保存")
+                    }
                 }
             }
         }

@@ -69,7 +69,9 @@ data class TrendDataItem(
     val selfCost: Double = 0.0,
     val sharedCost: Double = 0.0,
     val receivedSaved: Double = 0.0,
-    val timestamp: Long = 0L
+    val timestamp: Long = 0L,
+    val avgIntervalMinutes: Int = 0,
+    val peakHourSlot: String = "无打卡"
 )
 
 data class SmokingStats(
@@ -140,6 +142,15 @@ class SmokingViewModel(
     val customStartDate = MutableStateFlow<Long?>(null)
     val customEndDate = MutableStateFlow<Long?>(null)
 
+    val maxIntervalThresholdHours = MutableStateFlow(6)
+
+    fun setMaxIntervalThresholdHours(hours: Int) {
+        val valid = hours.coerceIn(1, 24)
+        maxIntervalThresholdHours.value = valid
+        context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            ?.edit()?.putInt("max_interval_hours", valid)?.apply()
+    }
+
     val isDemoMode = MutableStateFlow(false)
 
     // Process smoking logs based on selected time range
@@ -148,9 +159,18 @@ class SmokingViewModel(
         selectedTimeRange,
         selectedMonthYear,
         customStartDate,
-        customEndDate
-    ) { logList, timeRange, cal, startMs, endMs ->
-        calculateTrendData(logList, timeRange, cal, startMs, endMs)
+        customEndDate,
+        maxIntervalThresholdHours
+    ) { flows: Array<Any?> ->
+        @Suppress("UNCHECKED_CAST")
+        calculateTrendData(
+            logList = flows[0] as List<SmokingLog>,
+            timeRange = flows[1] as TrendTimeRange,
+            cal = flows[2] as Calendar,
+            startMs = flows[3] as? Long,
+            endMs = flows[4] as? Long,
+            maxIntervalHours = flows[5] as Int
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Process general stats
@@ -164,10 +184,12 @@ class SmokingViewModel(
             val langCode = prefs.getString("language", AppLanguage.ZH.code) ?: AppLanguage.ZH.code
             val themeCode = prefs.getString("theme_mode", AppThemeMode.SYSTEM.code) ?: AppThemeMode.SYSTEM.code
             val colorCode = prefs.getString("color_preset", AppColorPreset.DEFAULT.code) ?: AppColorPreset.DEFAULT.code
+            val maxInterval = prefs.getInt("max_interval_hours", 6)
 
             appLanguage.value = AppLanguage.values().firstOrNull { it.code == langCode } ?: AppLanguage.ZH
             appThemeMode.value = AppThemeMode.values().firstOrNull { it.code == themeCode } ?: AppThemeMode.SYSTEM
             appColorPreset.value = AppColorPreset.values().firstOrNull { it.code == colorCode } ?: AppColorPreset.DEFAULT
+            maxIntervalThresholdHours.value = maxInterval.coerceIn(1, 24)
         }
 
         viewModelScope.launch {
@@ -176,12 +198,58 @@ class SmokingViewModel(
         }
     }
 
+    private fun computeIntervalAndPeak(logs: List<SmokingLog>, maxIntervalHours: Int = 6): Pair<Int, String> {
+        if (logs.isEmpty()) return Pair(0, "无打卡")
+
+        val sorted = logs.sortedBy { it.timestamp }
+        var totalIntervalMs = 0L
+        var count = 0
+        val maxIntervalMs = maxIntervalHours.coerceIn(1, 24) * 3_600_000L
+        for (i in 0 until sorted.size - 1) {
+            val diff = sorted[i + 1].timestamp - sorted[i].timestamp
+            if (diff in 60_000L..maxIntervalMs) {
+                totalIntervalMs += diff
+                count++
+            }
+        }
+        val avgMin = if (count > 0) (totalIntervalMs / (count * 60_000L)).toInt() else 0
+
+        val hourBins = IntArray(24)
+        logs.forEach { log ->
+            val cal = Calendar.getInstance().apply { timeInMillis = log.timestamp }
+            val hour = cal.get(Calendar.HOUR_OF_DAY)
+            hourBins[hour] += log.quantity
+        }
+
+        var maxCount = 0
+        var peakStartHour = -1
+        for (h in 0..22) {
+            val countInWindow = hourBins[h] + hourBins[h + 1]
+            if (countInWindow > maxCount) {
+                maxCount = countInWindow
+                peakStartHour = h
+            }
+        }
+
+        val peakSlot = if (peakStartHour >= 0 && maxCount > 0) {
+            String.format("%02d:00-%02d:00", peakStartHour, peakStartHour + 2)
+        } else if (logs.isNotEmpty()) {
+            val h = Calendar.getInstance().apply { timeInMillis = logs[0].timestamp }.get(Calendar.HOUR_OF_DAY)
+            String.format("%02d:00-%02d:00", h, (h + 2) % 24)
+        } else {
+            "无打卡"
+        }
+
+        return Pair(avgMin, peakSlot)
+    }
+
     private fun calculateTrendData(
         logList: List<SmokingLog>,
         timeRange: TrendTimeRange,
         cal: Calendar,
         startMs: Long?,
-        endMs: Long?
+        endMs: Long?,
+        maxIntervalHours: Int = 6
     ): List<TrendDataItem> {
         val trend = ArrayList<TrendDataItem>()
         val sdfDay = SimpleDateFormat("MM/dd", Locale.getDefault())
@@ -207,6 +275,7 @@ class SmokingViewModel(
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours)
 
                     trend.add(
                         TrendDataItem(
@@ -217,7 +286,9 @@ class SmokingViewModel(
                             selfCost = selfCost,
                             sharedCost = sharedCost,
                             receivedSaved = receivedSaved,
-                            timestamp = dayStart
+                            timestamp = dayStart,
+                            avgIntervalMinutes = avgMin,
+                            peakHourSlot = peakSlot
                         )
                     )
                 }
@@ -245,6 +316,7 @@ class SmokingViewModel(
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours)
 
                     trend.add(
                         TrendDataItem(
@@ -255,7 +327,9 @@ class SmokingViewModel(
                             selfCost = selfCost,
                             sharedCost = sharedCost,
                             receivedSaved = receivedSaved,
-                            timestamp = dayStart
+                            timestamp = dayStart,
+                            avgIntervalMinutes = avgMin,
+                            peakHourSlot = peakSlot
                         )
                     )
                 }
@@ -283,6 +357,7 @@ class SmokingViewModel(
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours)
 
                     trend.add(
                         TrendDataItem(
@@ -293,7 +368,9 @@ class SmokingViewModel(
                             selfCost = selfCost,
                             sharedCost = sharedCost,
                             receivedSaved = receivedSaved,
-                            timestamp = dayStart
+                            timestamp = dayStart,
+                            avgIntervalMinutes = avgMin,
+                            peakHourSlot = peakSlot
                         )
                     )
                 }
@@ -325,6 +402,7 @@ class SmokingViewModel(
                     val selfCost = monthLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = monthLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(monthLogs, maxIntervalHours)
 
                     trend.add(
                         TrendDataItem(
@@ -335,7 +413,9 @@ class SmokingViewModel(
                             selfCost = selfCost,
                             sharedCost = sharedCost,
                             receivedSaved = receivedSaved,
-                            timestamp = monthStartCal.timeInMillis
+                            timestamp = monthStartCal.timeInMillis,
+                            avgIntervalMinutes = avgMin,
+                            peakHourSlot = peakSlot
                         )
                     )
                 }
@@ -356,6 +436,7 @@ class SmokingViewModel(
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours)
 
                     trend.add(
                         TrendDataItem(
@@ -366,7 +447,9 @@ class SmokingViewModel(
                             selfCost = selfCost,
                             sharedCost = sharedCost,
                             receivedSaved = receivedSaved,
-                            timestamp = dayStart
+                            timestamp = dayStart,
+                            avgIntervalMinutes = avgMin,
+                            peakHourSlot = peakSlot
                         )
                     )
                     current.add(Calendar.DAY_OF_YEAR, 1)
