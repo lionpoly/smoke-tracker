@@ -59,9 +59,9 @@ object AppStrings {
         "saved_subtitle" to "他请客省下的",
 
         "quick_record_title" to "快速打卡极速记录",
-        "quick_self_btn" to "🚬 自购自抽 +1",
-        "quick_shared_btn" to "🤝 社交递烟 +1",
-        "quick_received_btn" to "🎁 社交接烟 +1",
+        "quick_self_btn" to "自购自抽 +1",
+        "quick_shared_btn" to "社交递烟 +1",
+        "quick_received_btn" to "社交接烟 +1",
         "custom_record_btn" to "自定义多支 / 备注记录",
 
         "ai_advice_title" to "AI 戒烟教练分析与建议",
