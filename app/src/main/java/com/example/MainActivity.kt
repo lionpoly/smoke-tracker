@@ -23,10 +23,12 @@ class MainActivity : ComponentActivity() {
     setContent {
       val themeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
       val colorPreset by viewModel.appColorPreset.collectAsStateWithLifecycle()
+      val fontFamilyState by viewModel.appFontFamily.collectAsStateWithLifecycle()
 
       MyApplicationTheme(
         themeMode = themeMode,
-        colorPreset = colorPreset
+        colorPreset = colorPreset,
+        fontFamily = fontFamilyState.fontFamily
       ) {
         SmokingApp(viewModel)
       }

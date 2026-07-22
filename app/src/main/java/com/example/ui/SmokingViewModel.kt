@@ -34,6 +34,20 @@ import java.util.Date
 import java.util.Locale
 import kotlin.random.Random
 
+enum class AppFontFamily(
+    val code: String,
+    val labelZh: String,
+    val labelEn: String,
+    val fontFamily: androidx.compose.ui.text.font.FontFamily
+) {
+    DEFAULT("DEFAULT", "系统默认 (Sans-Serif)", "Default Sans-Serif", androidx.compose.ui.text.font.FontFamily.Default),
+    SERIF("SERIF", "优雅衬线体 (Serif)", "Serif", androidx.compose.ui.text.font.FontFamily.Serif),
+    MONOSPACE("MONOSPACE", "极客等宽 (Monospace)", "Monospace", androidx.compose.ui.text.font.FontFamily.Monospace),
+    CURSIVE("CURSIVE", "手写圆体 (Cursive)", "Cursive", androidx.compose.ui.text.font.FontFamily.Cursive);
+
+    fun getLabel(lang: AppLanguage = AppLanguage.ZH): String = if (lang == AppLanguage.EN) labelEn else labelZh
+}
+
 enum class AppCurrency(
     val code: String,
     val symbol: String,
@@ -125,6 +139,7 @@ class SmokingViewModel(
     val appThemeMode = MutableStateFlow(AppThemeMode.SYSTEM)
     val appColorPreset = MutableStateFlow(AppColorPreset.DEFAULT)
     val appCurrency = MutableStateFlow(AppCurrency.CNY)
+    val appFontFamily = MutableStateFlow(AppFontFamily.DEFAULT)
 
     fun setAppLanguage(lang: AppLanguage) {
         appLanguage.value = lang
@@ -148,6 +163,12 @@ class SmokingViewModel(
         appCurrency.value = currency
         context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
             ?.edit()?.putString("currency_code", currency.code)?.apply()
+    }
+
+    fun setAppFontFamily(font: AppFontFamily) {
+        appFontFamily.value = font
+        context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            ?.edit()?.putString("font_family", font.code)?.apply()
     }
 
     val cigarettes: StateFlow<List<Cigarette>> = repository.allCigarettes
@@ -213,12 +234,14 @@ class SmokingViewModel(
             val themeCode = prefs.getString("theme_mode", AppThemeMode.SYSTEM.code) ?: AppThemeMode.SYSTEM.code
             val colorCode = prefs.getString("color_preset", AppColorPreset.DEFAULT.code) ?: AppColorPreset.DEFAULT.code
             val currencyCode = prefs.getString("currency_code", AppCurrency.CNY.code) ?: AppCurrency.CNY.code
+            val fontCode = prefs.getString("font_family", AppFontFamily.DEFAULT.code) ?: AppFontFamily.DEFAULT.code
             val maxInterval = prefs.getInt("max_interval_hours", 6)
 
             appLanguage.value = AppLanguage.values().firstOrNull { it.code == langCode } ?: AppLanguage.ZH
             appThemeMode.value = AppThemeMode.values().firstOrNull { it.code == themeCode } ?: AppThemeMode.SYSTEM
             appColorPreset.value = AppColorPreset.values().firstOrNull { it.code == colorCode } ?: AppColorPreset.DEFAULT
             appCurrency.value = AppCurrency.values().firstOrNull { it.code == currencyCode } ?: AppCurrency.CNY
+            appFontFamily.value = AppFontFamily.values().firstOrNull { it.code == fontCode } ?: AppFontFamily.DEFAULT
             maxIntervalThresholdHours.value = maxInterval.coerceIn(1, 24)
         }
 

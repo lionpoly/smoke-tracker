@@ -244,29 +244,31 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             }
         }
 
-        // Today Stats Grid
+        // Today Stats Grid (Merged 2/3 and 1/3 layout)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Merged Card 1 (Self + Received) occupying 2/3 of content width
             StatCard(
-                title = "今日自抽",
-                value = "${stats.todaySelfCount} 支",
-                subtitle = "目标 ${stats.currentGoalLimit} 支(自抽+接)",
+                title = "今日实际吸烟 (自抽+接烟)",
+                value = "${stats.todaySelfCount + stats.todayReceivedCount} 支",
+                detailText = "自抽 ${stats.todaySelfCount} 支 · 接烟 ${stats.todayReceivedCount} 支",
+                subtitle = "目标 ${stats.currentGoalLimit} 支/天 (${if (stats.isOverLimit) "已超标" else "符合目标"})",
+                icon = Icons.Rounded.SmokingRooms,
+                iconTint = if (stats.isOverLimit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(2f)
             )
+
+            // Card 2 (Shared Out) occupying 1/3 of content width
             StatCard(
                 title = "社交递烟",
                 value = "${stats.todaySharedCount} 支",
-                subtitle = "分享他人",
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.weight(1f)
-            )
-            StatCard(
-                title = "社交接烟",
-                value = "${stats.todayReceivedCount} 支",
-                subtitle = "免费蹭烟",
+                detailText = "分享给他人",
+                subtitle = "递烟开销",
+                icon = Icons.Rounded.CallMade,
+                iconTint = MaterialTheme.colorScheme.secondary,
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.weight(1f)
             )
@@ -281,6 +283,8 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 title = "今日吸烟开销",
                 value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todayCost)}",
                 subtitle = "自购+递烟花费",
+                icon = Icons.Rounded.Payments,
+                iconTint = MaterialTheme.colorScheme.primary,
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.weight(1f)
             )
@@ -288,6 +292,8 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 title = "接烟省下金额",
                 value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todaySavedFromReceived)}",
                 subtitle = "他请客省下的",
+                icon = Icons.Rounded.CardGiftcard,
+                iconTint = Color(0xFF2E7D32),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.weight(1f)
             )
@@ -349,9 +355,11 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(vertical = 10.dp)
+                        contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp)
                     ) {
-                        Text("🚬 自购自抽 +1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(imageVector = Icons.Rounded.SmokingRooms, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("自购自抽 +1", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
 
                     // Quick 2: Shared Out
@@ -362,9 +370,11 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                        contentPadding = PaddingValues(vertical = 10.dp)
+                        contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp)
                     ) {
-                        Text("🤝 社交递烟 +1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(imageVector = Icons.Rounded.CallMade, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("社交递烟 +1", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
 
                     // Quick 3: Received In
@@ -375,9 +385,11 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                        contentPadding = PaddingValues(vertical = 10.dp)
+                        contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp)
                     ) {
-                        Text("🎁 社交接烟 +1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(imageVector = Icons.Rounded.CallReceived, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("社交接烟 +1", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
 
@@ -614,7 +626,10 @@ fun StatCard(
     value: String,
     subtitle: String,
     color: Color = MaterialTheme.colorScheme.surface,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    iconTint: Color = MaterialTheme.colorScheme.primary,
+    detailText: String? = null
 ) {
     Card(
         modifier = modifier,
@@ -623,9 +638,36 @@ fun StatCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(text = title, fontSize = 11.sp, color = Color.Gray)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 11.sp,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (icon != null) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Text(text = value, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            if (detailText != null) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(text = detailText, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Spacer(modifier = Modifier.height(2.dp))
             Text(text = subtitle, fontSize = 10.sp, color = Color.Gray)
         }
@@ -979,27 +1021,55 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Interactive Hint
-                Text(
-                    text = AppStrings.get("chart_click_hint", lang),
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium
-                )
+                // Interactive Dynamic Banner / Annotation Pill
+                val bannerText = if (selectedChartIndex in trendData.indices) {
+                    val sel = trendData[selectedChartIndex]
+                    if (selectedChartType == ChartType.LINE) {
+                        "【${sel.dateLabel}】自购自抽+社交接烟: ${sel.selfCount + sel.receivedCount}支 · 社交接烟: ${sel.receivedCount}支 (自抽:${sel.selfCount}支)"
+                    } else {
+                        "【${sel.dateLabel}】实际吸烟:${sel.selfCount + sel.receivedCount}支 (自抽:${sel.selfCount} 接:${sel.receivedCount}) · 递烟:${sel.sharedCount}支 · 花费:${currency.symbol}${String.format(Locale.getDefault(), "%.2f", sel.selfCost + sel.sharedCost)}"
+                    }
+                } else {
+                    if (selectedChartType == ChartType.LINE) {
+                        "点击折线数据节点可对比【自购自抽+社交接烟】与【社交接烟】详情"
+                    } else {
+                        AppStrings.get("chart_click_hint", lang)
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selectedChartIndex in trendData.indices) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = bannerText,
+                        fontSize = 12.sp,
+                        color = if (selectedChartIndex in trendData.indices) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Legend aligned with new bar/line structure
+                // Legend aligned with selected chart format
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LegendItem(color = MaterialTheme.colorScheme.primary, text = "自抽+接烟(实际吸烟)")
-                    Spacer(modifier = Modifier.width(12.dp))
-                    LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
-                    Spacer(modifier = Modifier.width(12.dp))
-                    LegendItem(color = MaterialTheme.colorScheme.secondary, text = "社交递烟")
+                    if (selectedChartType == ChartType.LINE) {
+                        LegendItem(color = MaterialTheme.colorScheme.primary, text = "自购自抽 + 社交接烟")
+                        Spacer(modifier = Modifier.width(16.dp))
+                        LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
+                    } else {
+                        LegendItem(color = MaterialTheme.colorScheme.primary, text = "实际吸烟(自抽+接烟)")
+                        Spacer(modifier = Modifier.width(12.dp))
+                        LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
+                        Spacer(modifier = Modifier.width(12.dp))
+                        LegendItem(color = MaterialTheme.colorScheme.secondary, text = "社交递烟")
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -1060,15 +1130,15 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column {
-                                        Text("🚬 自抽: ${item.selfCount} 支", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        Text("🤝 递烟: ${item.sharedCount} 支", fontSize = 11.sp, color = Color.Gray)
-                                        Text("🎁 接烟: ${item.receivedCount} 支", fontSize = 11.sp, color = Color.Gray)
-                                        Text("🔥 实际吸烟(自抽+接烟): ${item.selfCount + item.receivedCount} 支", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                        Text("自抽: ${item.selfCount} 支", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("递烟: ${item.sharedCount} 支", fontSize = 11.sp, color = Color.Gray)
+                                        Text("接烟: ${item.receivedCount} 支", fontSize = 11.sp, color = Color.Gray)
+                                        Text("实际吸烟(自抽+接烟): ${item.selfCount + item.receivedCount} 支", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
-                                        Text("⏱️ 平均间隔: ${if (item.avgIntervalMinutes > 0) "${item.avgIntervalMinutes}分钟" else "单次打卡"}", fontSize = 11.sp)
-                                        Text("⏰ 高峰窗口: ${item.peakHourSlot}", fontSize = 11.sp)
-                                        Text("💰 当日开销: ${currency.symbol}${String.format(Locale.getDefault(), "%.2f", item.selfCost + item.sharedCost)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                        Text("平均间隔: ${if (item.avgIntervalMinutes > 0) "${item.avgIntervalMinutes}分钟" else "单次打卡"}", fontSize = 11.sp)
+                                        Text("高峰窗口: ${item.peakHourSlot}", fontSize = 11.sp)
+                                        Text("当日开销: ${currency.symbol}${String.format(Locale.getDefault(), "%.2f", item.selfCost + item.sharedCost)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                                     }
                                 }
                             }
@@ -1291,8 +1361,8 @@ fun TrendChartComposable(
                 }
             }
             ChartType.LINE -> {
-                val pathCombined = Path() // Self + Received In
-                val pathRec = Path()      // Received In
+                val pathCombined = Path() // Line 1: Self + Received In (自购自抽 + 社交接烟)
+                val pathRec = Path()      // Line 2: Received In (社交接烟)
 
                 trendData.forEachIndexed { index, item ->
                     val x = leftPx + index * stepX + stepX / 2f
@@ -1316,11 +1386,32 @@ fun TrendChartComposable(
 
                     if (isSelected) {
                         drawCircle(color = primaryColor, radius = 9.dp.toPx(), center = Offset(x, yCombined), style = Stroke(width = 2.dp.toPx()))
+                        drawCircle(color = greenColor, radius = 8.dp.toPx(), center = Offset(x, yRec), style = Stroke(width = 1.5.dp.toPx()))
+
+                        val paintCombinedText = android.graphics.Paint().apply {
+                            color = android.graphics.Color.parseColor("#1B5E20")
+                            textSize = 10.sp.toPx()
+                            textAlign = android.graphics.Paint.Align.CENTER
+                            isFakeBoldText = true
+                            isAntiAlias = true
+                        }
+                        val paintRecText = android.graphics.Paint().apply {
+                            color = android.graphics.Color.parseColor("#2E7D32")
+                            textSize = 9.5.sp.toPx()
+                            textAlign = android.graphics.Paint.Align.CENTER
+                            isFakeBoldText = true
+                            isAntiAlias = true
+                        }
+
+                        drawContext.canvas.nativeCanvas.drawText("${combinedCount}支", x, (yCombined - 10.dp.toPx()).coerceAtLeast(12.dp.toPx()), paintCombinedText)
+                        if (yRec != yCombined) {
+                            drawContext.canvas.nativeCanvas.drawText("${item.receivedCount}支", x, (yRec - 10.dp.toPx()).coerceAtLeast(12.dp.toPx()), paintRecText)
+                        }
                     }
                 }
 
                 drawPath(pathCombined, color = primaryColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
-                drawPath(pathRec, color = greenColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(pathRec, color = greenColor, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f))))
             }
             ChartType.SCATTER -> {
                 trendData.forEachIndexed { index, item ->
@@ -1675,16 +1766,19 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
     val themeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
     val colorPreset by viewModel.appColorPreset.collectAsStateWithLifecycle()
+    val fontFamilyState by viewModel.appFontFamily.collectAsStateWithLifecycle()
     val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
     val maxIntervalHours by viewModel.maxIntervalThresholdHours.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showFontDialog by remember { mutableStateOf(false) }
     var showCurrencyDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
     var showIntervalDialog by remember { mutableStateOf(false) }
     var showCloudSyncDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1700,7 +1794,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             fontWeight = FontWeight.Bold
         )
 
-        // Group 1: 外观与语言 (Language, Theme Appearance, Currency)
+        // Group 1: 外观与语言 (Language, Theme Appearance, Font Family, Currency)
         WeChatSettingsGroup(title = "外观与语言") {
             // 1. Language Item
             WeChatSettingsItem(
@@ -1728,7 +1822,19 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
 
             HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-            // 3. Currency Item
+            // 3. Font Family Item
+            WeChatSettingsItem(
+                title = "字体样式",
+                value = fontFamilyState.getLabel(lang),
+                icon = Icons.Rounded.FontDownload,
+                iconBgColor = Color(0xFFD81B60).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFFD81B60),
+                onClick = { showFontDialog = true }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            // 4. Currency Item
             WeChatSettingsItem(
                 title = "货币",
                 subtitle = "货币代码与符号联动",
@@ -1836,17 +1942,65 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
 
             WeChatSettingsItem(
                 title = "关于 Guard 控烟Guard",
-                subtitle = "版本号 v2.0 (Build 2026.07)",
+                subtitle = "开发者: Nonion · nonion.pl@gmail.com",
                 value = "v2.0",
                 icon = Icons.Rounded.Info,
                 iconBgColor = Color(0xFF757575).copy(alpha = 0.15f),
                 iconTintColor = Color(0xFF757575),
-                showChevron = false
+                onClick = { showAboutDialog = true }
             )
         }
     }
 
     // ================= Dialogs =================
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("关于软件 (About)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Guard 控烟Guard 是一款专注于智能记录吸烟行为、分析社交社交社交关系与烟草开销、并提供量身打卡与控烟方案的全功能助手。",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("软件版本", fontSize = 13.sp, color = Color.Gray)
+                        Text("v2.0 (Build 2026.07)", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("开发者", fontSize = 13.sp, color = Color.Gray)
+                        Text("Nonion", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("联系邮箱", fontSize = 13.sp, color = Color.Gray)
+                        Text("nonion.pl@gmail.com", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) {
+                    Text("确定")
+                }
+            }
+        )
+    }
     if (showLanguageDialog) {
         AlertDialog(
             onDismissRequest = { showLanguageDialog = false },
@@ -1959,6 +2113,61 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             },
             confirmButton = {
                 Button(onClick = { showThemeDialog = false }) { Text("完成") }
+            }
+        )
+    }
+
+    if (showFontDialog) {
+        AlertDialog(
+            onDismissRequest = { showFontDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.FontDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("字体样式设置 (Font Style)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppFontFamily.values().forEach { fontItem ->
+                        Surface(
+                            onClick = {
+                                viewModel.setAppFontFamily(fontItem)
+                                showFontDialog = false
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (fontFamilyState == fontItem) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = fontItem.getLabel(lang),
+                                        fontFamily = fontItem.fontFamily,
+                                        fontWeight = if (fontFamilyState == fontItem) FontWeight.Bold else FontWeight.Normal,
+                                        fontSize = 14.sp
+                                    )
+                                    Text(
+                                        text = "预览文字: Guard控烟助手 12345",
+                                        fontFamily = fontItem.fontFamily,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (fontFamilyState == fontItem) {
+                                    Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFontDialog = false }) { Text("取消") }
             }
         )
     }
