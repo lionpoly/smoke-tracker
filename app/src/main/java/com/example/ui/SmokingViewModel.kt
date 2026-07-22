@@ -34,6 +34,27 @@ import java.util.Date
 import java.util.Locale
 import kotlin.random.Random
 
+enum class AppCurrency(
+    val code: String,
+    val symbol: String,
+    val flag: String,
+    val nameZh: String,
+    val nameEn: String
+) {
+    CNY("CNY", "¥", "🇨🇳", "人民币", "Chinese Yuan"),
+    USD("USD", "$", "🇺🇸", "美元", "US Dollar"),
+    EUR("EUR", "€", "🇪🇺", "欧元", "Euro"),
+    JPY("JPY", "¥", "🇯🇵", "日元", "Japanese Yen"),
+    GBP("GBP", "£", "🇬🇧", "英镑", "British Pound"),
+    HKD("HKD", "HK$", "🇭🇰", "港币", "Hong Kong Dollar"),
+    TWD("TWD", "NT$", "🇹🇼", "新台币", "New Taiwan Dollar");
+
+    fun getOptionLabel(lang: AppLanguage = AppLanguage.ZH): String {
+        val name = if (lang == AppLanguage.EN) nameEn else nameZh
+        return "$flag $symbol $code ($name)"
+    }
+}
+
 sealed interface AiAdviceState {
     object Idle : AiAdviceState
     object Loading : AiAdviceState
@@ -103,6 +124,7 @@ class SmokingViewModel(
     val appLanguage = MutableStateFlow(AppLanguage.ZH)
     val appThemeMode = MutableStateFlow(AppThemeMode.SYSTEM)
     val appColorPreset = MutableStateFlow(AppColorPreset.DEFAULT)
+    val appCurrency = MutableStateFlow(AppCurrency.CNY)
 
     fun setAppLanguage(lang: AppLanguage) {
         appLanguage.value = lang
@@ -120,6 +142,12 @@ class SmokingViewModel(
         appColorPreset.value = preset
         context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
             ?.edit()?.putString("color_preset", preset.code)?.apply()
+    }
+
+    fun setAppCurrency(currency: AppCurrency) {
+        appCurrency.value = currency
+        context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            ?.edit()?.putString("currency_code", currency.code)?.apply()
     }
 
     val cigarettes: StateFlow<List<Cigarette>> = repository.allCigarettes
@@ -184,11 +212,13 @@ class SmokingViewModel(
             val langCode = prefs.getString("language", AppLanguage.ZH.code) ?: AppLanguage.ZH.code
             val themeCode = prefs.getString("theme_mode", AppThemeMode.SYSTEM.code) ?: AppThemeMode.SYSTEM.code
             val colorCode = prefs.getString("color_preset", AppColorPreset.DEFAULT.code) ?: AppColorPreset.DEFAULT.code
+            val currencyCode = prefs.getString("currency_code", AppCurrency.CNY.code) ?: AppCurrency.CNY.code
             val maxInterval = prefs.getInt("max_interval_hours", 6)
 
             appLanguage.value = AppLanguage.values().firstOrNull { it.code == langCode } ?: AppLanguage.ZH
             appThemeMode.value = AppThemeMode.values().firstOrNull { it.code == themeCode } ?: AppThemeMode.SYSTEM
             appColorPreset.value = AppColorPreset.values().firstOrNull { it.code == colorCode } ?: AppColorPreset.DEFAULT
+            appCurrency.value = AppCurrency.values().firstOrNull { it.code == currencyCode } ?: AppCurrency.CNY
             maxIntervalThresholdHours.value = maxInterval.coerceIn(1, 24)
         }
 
@@ -643,94 +673,56 @@ class SmokingViewModel(
         val unitPrice = packPrice / packSize
 
         val demoLogs = ArrayList<SmokingLog>()
-        val cal = Calendar.getInstance()
+        val nowMs = System.currentTimeMillis()
 
-        // Generate 60 days of historical demo logs
-        for (dayOffset in 60 downTo 0) {
-            val dayCal = (cal.clone() as Calendar).apply {
+        // Generate 60 days of realistic smoker logs
+        for (dayOffset in 59 downTo 0) {
+            val dayCal = Calendar.getInstance().apply {
                 add(Calendar.DAY_OF_YEAR, -dayOffset)
             }
 
-            // Morning log (~8:30 AM)
-            val morningCal = (dayCal.clone() as Calendar).apply {
-                set(Calendar.HOUR_OF_DAY, 8)
-                set(Calendar.MINUTE, 20 + Random.nextInt(20))
-            }
-            demoLogs.add(
-                SmokingLog(
-                    cigaretteId = defaultCigId,
-                    quantity = 1,
-                    logType = "SELF",
-                    isShared = false,
-                    cost = unitPrice,
-                    note = "晨起唤醒烟",
-                    timestamp = morningCal.timeInMillis,
-                    isDemo = true
-                )
+            // Define daily time slots for a realistic smoker:
+            // 1. Morning awakening (07:20 - 08:30)
+            // 2. Work morning break (10:15 - 10:45)
+            // 3. Post-lunch (12:30 - 13:20)
+            // 4. Afternoon tea / stress break (15:00 - 16:15)
+            // 5. Off-work / commute / dinner social (18:15 - 19:30)
+            // 6. Night leisure before bed (21:00 - 22:45)
+
+            val slots = listOf(
+                Pair(7, 30) to listOf("SELF" to "晨起第1支唤醒烟", "SELF" to "洗漱后提神"),
+                Pair(10, 20) to listOf("SELF" to "工间休息提神", "SHARED_OUT" to "给同事递烟", "RECEIVED_IN" to "接受同事递烟"),
+                Pair(12, 45) to listOf("SELF" to "饭后一根烟", "SHARED_OUT" to "午餐后散烟社交", "RECEIVED_IN" to "午饭后蹭烟"),
+                Pair(15, 30) to listOf("SELF" to "下午茶提神醒脑", "SELF" to "工作遇到难题抽根烟", "RECEIVED_IN" to "客户递烟交流"),
+                Pair(18, 40) to listOf("SELF" to "下班路途中", "SHARED_OUT" to "晚餐聚餐递烟", "RECEIVED_IN" to "聚会接烟"),
+                Pair(21, 30) to listOf("SELF" to "晚间自娱自乐", "SELF" to "睡前放松总结", "SELF" to "阳台独处放空")
             )
 
-            // Afternoon log (~13:00 PM) - 80% chance
-            if (Random.nextFloat() > 0.20) {
-                val noonCal = (dayCal.clone() as Calendar).apply {
-                    set(Calendar.HOUR_OF_DAY, 13)
-                    set(Calendar.MINUTE, 10 + Random.nextInt(30))
+            for ((timePair, notesList) in slots) {
+                val hour = timePair.first
+                val minute = timePair.second + Random.nextInt(-10, 15)
+                val logCal = (dayCal.clone() as Calendar).apply {
+                    set(Calendar.HOUR_OF_DAY, hour)
+                    set(Calendar.MINUTE, minute.coerceIn(0, 59))
+                    set(Calendar.SECOND, Random.nextInt(0, 59))
                 }
-                val isShared = Random.nextFloat() > 0.65
-                val logType = if (isShared) "SHARED_OUT" else "SELF"
-                demoLogs.add(
-                    SmokingLog(
-                        cigaretteId = defaultCigId,
-                        quantity = 1,
-                        logType = logType,
-                        isShared = isShared,
-                        cost = unitPrice,
-                        note = if (isShared) "饭后散烟" else "饭后提神",
-                        timestamp = noonCal.timeInMillis,
-                        isDemo = true
-                    )
-                )
-            }
 
-            // Social event log (~18:30 PM) - 60% chance
-            if (Random.nextFloat() > 0.40) {
-                val socialCal = (dayCal.clone() as Calendar).apply {
-                    set(Calendar.HOUR_OF_DAY, 18)
-                    set(Calendar.MINUTE, 40 + Random.nextInt(40))
-                }
-                val isReceived = Random.nextFloat() > 0.50
-                val logType = if (isReceived) "RECEIVED_IN" else "SHARED_OUT"
-                demoLogs.add(
-                    SmokingLog(
-                        cigaretteId = defaultCigId,
-                        quantity = 1,
-                        logType = logType,
-                        isShared = (logType == "SHARED_OUT"),
-                        cost = if (isReceived) 0.0 else unitPrice,
-                        note = if (isReceived) "同事递烟" else "社交社交",
-                        timestamp = socialCal.timeInMillis,
-                        isDemo = true
+                val logTime = logCal.timeInMillis
+                if (logTime <= nowMs) {
+                    val (type, note) = notesList[Random.nextInt(notesList.size)]
+                    demoLogs.add(
+                        SmokingLog(
+                            cigaretteId = defaultCigId,
+                            quantity = 1,
+                            logType = type,
+                            isShared = (type == "SHARED_OUT"),
+                            cost = if (type == "RECEIVED_IN") 0.0 else unitPrice,
+                            note = note,
+                            timestamp = logTime,
+                            isDemo = true
+                        )
                     )
-                )
-            }
-
-            // Night log (~22:00 PM) - 70% chance
-            if (Random.nextFloat() > 0.30) {
-                val nightCal = (dayCal.clone() as Calendar).apply {
-                    set(Calendar.HOUR_OF_DAY, 22)
-                    set(Calendar.MINUTE, Random.nextInt(45))
                 }
-                demoLogs.add(
-                    SmokingLog(
-                        cigaretteId = defaultCigId,
-                        quantity = 1,
-                        logType = "SELF",
-                        isShared = false,
-                        cost = unitPrice,
-                        note = "睡前放松",
-                        timestamp = nightCal.timeInMillis,
-                        isDemo = true
-                    )
-                )
             }
         }
 

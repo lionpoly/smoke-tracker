@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.DatePickerDialog
+import kotlinx.coroutines.isActive
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
@@ -137,10 +138,30 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     val cigarettes by viewModel.cigarettes.collectAsStateWithLifecycle()
     val aiAdviceState by viewModel.aiAdviceState.collectAsStateWithLifecycle()
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
+    val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
 
     var showAddLogDialog by remember { mutableStateOf(false) }
 
     val activeCigarette = cigarettes.firstOrNull { it.isActive } ?: cigarettes.firstOrNull()
+
+    // Dynamic timer calculating time elapsed since last smoking log
+    val lastLog = remember(logs) { logs.maxByOrNull { it.timestamp } }
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMs = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000L)
+        }
+    }
+    val elapsedText = if (lastLog != null) {
+        val diff = (nowMs - lastLog.timestamp).coerceAtLeast(0L)
+        val secs = (diff / 1000) % 60
+        val mins = (diff / (1000 * 60)) % 60
+        val hours = diff / (1000 * 3600)
+        String.format("%02d小时%02d分%02d秒", hours, mins, secs)
+    } else {
+        "暂无打卡记录"
+    }
 
     Column(
         modifier = Modifier
@@ -168,7 +189,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "今日吸烟（${stats.todayTotalCount}支）已超出目标限制（${stats.currentGoalLimit}支），请注意健康并尽量少抽！",
+                        text = "今日实际吸烟（自抽+接烟共${stats.todayTotalCount}支）已超出目标限制（${stats.currentGoalLimit}支），请注意健康！",
                         color = Color(0xFFC62828),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
@@ -212,7 +233,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     color = MaterialTheme.colorScheme.primary
                 ) {
                     Text(
-                        text = "¥${String.format(Locale.getDefault(), "%.2f", activeCigarette?.price ?: 25.0)} / 包",
+                        text = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", activeCigarette?.price ?: 25.0)} / 包",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         color = MaterialTheme.colorScheme.onPrimary,
                         fontSize = 12.sp,
@@ -231,7 +252,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             StatCard(
                 title = "今日自抽",
                 value = "${stats.todaySelfCount} 支",
-                subtitle = "目标 ${stats.currentGoalLimit} 支",
+                subtitle = "目标 ${stats.currentGoalLimit} 支(自抽+接)",
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.weight(1f)
             )
@@ -258,33 +279,62 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
         ) {
             StatCard(
                 title = "今日吸烟开销",
-                value = "¥${String.format(Locale.getDefault(), "%.2f", stats.todayCost)}",
+                value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todayCost)}",
                 subtitle = "自购+递烟花费",
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.weight(1f)
             )
             StatCard(
                 title = "接烟省下金额",
-                value = "¥${String.format(Locale.getDefault(), "%.2f", stats.todaySavedFromReceived)}",
+                value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todaySavedFromReceived)}",
                 subtitle = "他请客省下的",
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.weight(1f)
             )
         }
 
-        // Quick Action Buttons (3 Scenes: Self, Shared Out, Received In)
+        // Quick Action Buttons with Dynamic Timer Badge
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "快速打卡极速记录",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "快速打卡极速记录",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Timer,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "距上次 $elapsedText",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Row(
@@ -589,6 +639,7 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     val trendData by viewModel.trendData.collectAsStateWithLifecycle()
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
     val goal by viewModel.activeGoal.collectAsStateWithLifecycle()
+    val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
     val maxIntervalHours by viewModel.maxIntervalThresholdHours.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -900,10 +951,9 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = "${selectedTimeRange.getLabel(lang)} - ${selectedChartType.getLabel(lang)}",
@@ -911,13 +961,17 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         fontSize = 15.sp
                     )
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Chart type options on their own row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         ChartType.values().forEach { type ->
                             FilterChip(
                                 selected = selectedChartType == type,
                                 onClick = { viewModel.selectedChartType.value = type },
-                                label = { Text(type.getLabel(lang), fontSize = 10.sp) },
-                                modifier = Modifier.height(28.dp)
+                                label = { Text(type.getLabel(lang), fontSize = 11.sp) },
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
@@ -935,17 +989,17 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Legend
+                // Legend aligned with new bar/line structure
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LegendItem(color = MaterialTheme.colorScheme.primary, text = "自购自抽")
-                    Spacer(modifier = Modifier.width(16.dp))
-                    LegendItem(color = MaterialTheme.colorScheme.secondary, text = "社交递烟")
-                    Spacer(modifier = Modifier.width(16.dp))
+                    LegendItem(color = MaterialTheme.colorScheme.primary, text = "自抽+接烟(实际吸烟)")
+                    Spacer(modifier = Modifier.width(12.dp))
                     LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
+                    Spacer(modifier = Modifier.width(12.dp))
+                    LegendItem(color = MaterialTheme.colorScheme.secondary, text = "社交递烟")
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -1009,11 +1063,12 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                         Text("🚬 自抽: ${item.selfCount} 支", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         Text("🤝 递烟: ${item.sharedCount} 支", fontSize = 11.sp, color = Color.Gray)
                                         Text("🎁 接烟: ${item.receivedCount} 支", fontSize = 11.sp, color = Color.Gray)
+                                        Text("🔥 实际吸烟(自抽+接烟): ${item.selfCount + item.receivedCount} 支", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text("⏱️ 平均间隔: ${if (item.avgIntervalMinutes > 0) "${item.avgIntervalMinutes}分钟" else "单次打卡"}", fontSize = 11.sp)
                                         Text("⏰ 高峰窗口: ${item.peakHourSlot}", fontSize = 11.sp)
-                                        Text("💰 当日开销: ¥${String.format(Locale.getDefault(), "%.2f", item.selfCost + item.sharedCost)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                        Text("💰 当日开销: ${currency.symbol}${String.format(Locale.getDefault(), "%.2f", item.selfCost + item.sharedCost)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                                     }
                                 }
                             }
@@ -1048,15 +1103,15 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 ) {
                     Column {
                         Text(AppStrings.get("self_cost", lang), fontSize = 11.sp, color = Color.Gray)
-                        Text("¥${String.format(Locale.getDefault(), "%.2f", totalSelfCost)}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("${currency.symbol}${String.format(Locale.getDefault(), "%.2f", totalSelfCost)}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
                     Column {
                         Text(AppStrings.get("shared_cost", lang), fontSize = 11.sp, color = Color.Gray)
-                        Text("¥${String.format(Locale.getDefault(), "%.2f", totalSharedCost)}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.secondary)
+                        Text("${currency.symbol}${String.format(Locale.getDefault(), "%.2f", totalSharedCost)}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.secondary)
                     }
                     Column {
                         Text(AppStrings.get("received_saved", lang), fontSize = 11.sp, color = Color.Gray)
-                        Text("¥${String.format(Locale.getDefault(), "%.2f", totalReceivedSaved)}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF2E7D32))
+                        Text("${currency.symbol}${String.format(Locale.getDefault(), "%.2f", totalReceivedSaved)}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF2E7D32))
                     }
                 }
 
@@ -1068,7 +1123,7 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(AppStrings.get("total_spent", lang), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text("¥${String.format(Locale.getDefault(), "%.2f", totalSpent)}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.error)
+                    Text("${currency.symbol}${String.format(Locale.getDefault(), "%.2f", totalSpent)}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -1178,90 +1233,93 @@ fun TrendChartComposable(
         // 4. Render Chart Format
         when (chartType) {
             ChartType.BAR -> {
-                val barWidth = (stepX * 0.5f).coerceIn(8.dp.toPx(), 22.dp.toPx())
+                val groupWidth = stepX * 0.8f
+                val singleBarWidth = (groupWidth / 2f - 2.dp.toPx()).coerceIn(4.dp.toPx(), 18.dp.toPx())
+                val barGap = 2.dp.toPx()
+
                 trendData.forEachIndexed { index, item ->
-                    val x = leftPx + index * stepX + (stepX - barWidth) / 2
                     val isSelected = index == selectedIndex
+                    val xCenter = leftPx + index * stepX + stepX / 2f
+                    val xBar1 = xCenter - singleBarWidth - barGap / 2f // Bar 1: Self + Received stacked
+                    val xBar2 = xCenter + barGap / 2f                  // Bar 2: Shared Out
 
                     val selfH = (item.selfCount.toFloat() / maxVal) * usableHeight
-                    val sharedH = (item.sharedCount.toFloat() / maxVal) * usableHeight
                     val recH = (item.receivedCount.toFloat() / maxVal) * usableHeight
+                    val sharedH = (item.sharedCount.toFloat() / maxVal) * usableHeight
 
-                    var currentY = height - bottomPx
+                    val baseY = height - bottomPx
 
-                    if (recH > 0) {
-                        drawRect(
-                            color = greenColor,
-                            topLeft = Offset(x, currentY - recH),
-                            size = Size(barWidth, recH)
-                        )
-                        currentY -= recH
-                    }
-
-                    if (sharedH > 0) {
-                        drawRect(
-                            color = secondaryColor,
-                            topLeft = Offset(x, currentY - sharedH),
-                            size = Size(barWidth, sharedH)
-                        )
-                        currentY -= sharedH
-                    }
-
+                    // Draw Bar 1: Stacked Self (Primary) + Received In (Green)
+                    var currentY = baseY
                     if (selfH > 0) {
                         drawRect(
                             color = primaryColor,
-                            topLeft = Offset(x, currentY - selfH),
-                            size = Size(barWidth, selfH)
+                            topLeft = Offset(xBar1, currentY - selfH),
+                            size = Size(singleBarWidth, selfH)
+                        )
+                        currentY -= selfH
+                    }
+                    if (recH > 0) {
+                        drawRect(
+                            color = greenColor,
+                            topLeft = Offset(xBar1, currentY - recH),
+                            size = Size(singleBarWidth, recH)
+                        )
+                    }
+
+                    // Draw Bar 2: Shared Out (Secondary)
+                    if (sharedH > 0) {
+                        drawRect(
+                            color = secondaryColor,
+                            topLeft = Offset(xBar2, baseY - sharedH),
+                            size = Size(singleBarWidth, sharedH)
                         )
                     }
 
                     if (isSelected) {
-                        val totalH = selfH + sharedH + recH
-                        val barTopY = height - bottomPx - totalH
+                        val totalH1 = selfH + recH
+                        val maxH = maxOf(totalH1, sharedH)
+                        val barTopY = baseY - maxH
+                        val totalWidth = singleBarWidth * 2 + barGap + 4.dp.toPx()
                         drawRect(
                             color = primaryColor,
-                            topLeft = Offset(x - 2.dp.toPx(), barTopY - 2.dp.toPx()),
-                            size = Size(barWidth + 4.dp.toPx(), totalH.coerceAtLeast(4.dp.toPx()) + 4.dp.toPx()),
-                            style = Stroke(width = 2.dp.toPx())
+                            topLeft = Offset(xBar1 - 2.dp.toPx(), barTopY - 2.dp.toPx()),
+                            size = Size(totalWidth, maxH.coerceAtLeast(4.dp.toPx()) + 4.dp.toPx()),
+                            style = Stroke(width = 1.5.dp.toPx())
                         )
                     }
                 }
             }
             ChartType.LINE -> {
-                val pathSelf = Path()
-                val pathShared = Path()
-                val pathRec = Path()
+                val pathCombined = Path() // Self + Received In
+                val pathRec = Path()      // Received In
 
                 trendData.forEachIndexed { index, item ->
-                    val x = leftPx + index * stepX + stepX / 2
-                    val ySelf = height - bottomPx - (item.selfCount.toFloat() / maxVal) * usableHeight
-                    val yShared = height - bottomPx - (item.sharedCount.toFloat() / maxVal) * usableHeight
+                    val x = leftPx + index * stepX + stepX / 2f
+                    val combinedCount = item.selfCount + item.receivedCount
+                    val yCombined = height - bottomPx - (combinedCount.toFloat() / maxVal) * usableHeight
                     val yRec = height - bottomPx - (item.receivedCount.toFloat() / maxVal) * usableHeight
 
                     if (index == 0) {
-                        pathSelf.moveTo(x, ySelf)
-                        pathShared.moveTo(x, yShared)
+                        pathCombined.moveTo(x, yCombined)
                         pathRec.moveTo(x, yRec)
                     } else {
-                        pathSelf.lineTo(x, ySelf)
-                        pathShared.lineTo(x, yShared)
+                        pathCombined.lineTo(x, yCombined)
                         pathRec.lineTo(x, yRec)
                     }
 
                     val isSelected = index == selectedIndex
                     val radius = if (isSelected) 6.dp.toPx() else 3.5.dp.toPx()
 
-                    drawCircle(color = primaryColor, radius = radius, center = Offset(x, ySelf))
-                    drawCircle(color = secondaryColor, radius = radius, center = Offset(x, yShared))
+                    drawCircle(color = primaryColor, radius = radius, center = Offset(x, yCombined))
                     drawCircle(color = greenColor, radius = radius, center = Offset(x, yRec))
 
                     if (isSelected) {
-                        drawCircle(color = primaryColor, radius = 9.dp.toPx(), center = Offset(x, ySelf), style = Stroke(width = 2.dp.toPx()))
+                        drawCircle(color = primaryColor, radius = 9.dp.toPx(), center = Offset(x, yCombined), style = Stroke(width = 2.dp.toPx()))
                     }
                 }
 
-                drawPath(pathSelf, color = primaryColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
-                drawPath(pathShared, color = secondaryColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(pathCombined, color = primaryColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
                 drawPath(pathRec, color = greenColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
             }
             ChartType.SCATTER -> {
@@ -1388,6 +1446,7 @@ fun StoreScreen(viewModel: SmokingViewModel) {
                 items(cigarettes) { cig ->
                     CigaretteItemCard(
                         cigarette = cig,
+                        viewModel = viewModel,
                         onUpdate = { updatedCig -> viewModel.updateCigarette(updatedCig) },
                         onSetActive = { viewModel.setActiveCigarette(cig.id) },
                         onDelete = { viewModel.deleteCigarette(cig) }
@@ -1412,17 +1471,25 @@ fun StoreScreen(viewModel: SmokingViewModel) {
 @Composable
 fun CigaretteItemCard(
     cigarette: Cigarette,
+    viewModel: SmokingViewModel,
     onUpdate: (Cigarette) -> Unit,
     onSetActive: () -> Unit,
     onDelete: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
 
     var editName by remember { mutableStateOf(cigarette.name) }
     var editPriceType by remember { mutableStateOf(cigarette.priceType) }
     var editPrice by remember { mutableStateOf(cigarette.price.toString()) }
     var editCartonPrice by remember { mutableStateOf(cigarette.cartonPrice.toString()) }
     var editPackSize by remember { mutableStateOf(cigarette.packSize.toString()) }
+
+    val unitPrice = cigarette.price / cigarette.packSize.coerceAtLeast(1)
+    val packStr = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", cigarette.price)}/包"
+    val cartonStr = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", cigarette.cartonPrice)}/条"
+    val stickStr = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", unitPrice)}/支"
+    val specText = "$packStr / $cartonStr / $stickStr"
 
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -1502,24 +1569,18 @@ fun CigaretteItemCard(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Pricing Badges
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Pricing Specifications
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                SuggestionChip(
-                    onClick = {},
-                    label = { Text("单包: ¥${String.format(Locale.getDefault(), "%.2f", cigarette.price)}") }
-                )
-                SuggestionChip(
-                    onClick = {},
-                    label = { Text("单条: ¥${String.format(Locale.getDefault(), "%.2f", cigarette.cartonPrice)}") }
-                )
-                SuggestionChip(
-                    onClick = {},
-                    label = { Text("${cigarette.packSize}支/包") }
+                Text(
+                    text = specText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                 )
             }
 
@@ -1614,20 +1675,16 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
     val themeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
     val colorPreset by viewModel.appColorPreset.collectAsStateWithLifecycle()
+    val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
     val maxIntervalHours by viewModel.maxIntervalThresholdHours.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    var limitInput by remember { mutableStateOf("") }
-    var budgetInput by remember { mutableStateOf("") }
-    var quitDateTimestamp by remember { mutableStateOf<Long?>(null) }
-
-    LaunchedEffect(activeGoal) {
-        activeGoal?.let {
-            limitInput = it.dailyLimit.toString()
-            budgetInput = it.monthlyBudget?.toString() ?: ""
-            quitDateTimestamp = it.targetQuitDate
-        }
-    }
+    var showLanguageDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
+    var showCurrencyDialog by remember { mutableStateOf(false) }
+    var showGoalDialog by remember { mutableStateOf(false) }
+    var showIntervalDialog by remember { mutableStateOf(false) }
+    var showCloudSyncDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1639,51 +1696,216 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     ) {
         Text(
             text = AppStrings.get("settings_title", lang),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
 
-        // Card 1: Multi-Language & Theme Appearance Card
-        ExpandableSettingsCard(
-            title = AppStrings.get("lang_theme_card_title", lang),
-            icon = Icons.Rounded.Palette,
-            initialExpanded = true
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                // Section 1: Language Switcher
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = AppStrings.get("select_language", lang),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
+        // Group 1: 外观与语言 (Language, Theme Appearance, Currency)
+        WeChatSettingsGroup(title = "外观与语言") {
+            // 1. Language Item
+            WeChatSettingsItem(
+                title = "语言 (Language)",
+                value = lang.displayName,
+                icon = Icons.Rounded.Translate,
+                iconBgColor = Color(0xFF1E88E5).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFF1E88E5),
+                onClick = { showLanguageDialog = true }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            // 2. Theme Appearance Item
+            val themeLabel = if (lang == AppLanguage.EN) themeMode.labelEn else themeMode.labelZh
+            val colorLabel = if (lang == AppLanguage.EN) colorPreset.labelEn else colorPreset.labelZh
+            WeChatSettingsItem(
+                title = "主题外观",
+                value = "$themeLabel · $colorLabel",
+                icon = Icons.Rounded.Palette,
+                iconBgColor = Color(0xFF8E24AA).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFF8E24AA),
+                onClick = { showThemeDialog = true }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            // 3. Currency Item
+            WeChatSettingsItem(
+                title = "货币",
+                subtitle = "货币代码与符号联动",
+                value = currency.getOptionLabel(lang),
+                icon = Icons.Rounded.Payments,
+                iconBgColor = Color(0xFF43A047).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFF43A047),
+                onClick = { showCurrencyDialog = true }
+            )
+        }
+
+        // Group 2: 控烟目标与算法设置 (Goals & Calculation Rules)
+        WeChatSettingsGroup(title = "控烟目标与算法") {
+            val dailyLimitStr = "${activeGoal?.dailyLimit ?: 10} 支/天"
+            WeChatSettingsItem(
+                title = "每日吸烟限制",
+                subtitle = "限制(自抽+接烟)的总和",
+                value = dailyLimitStr,
+                icon = Icons.Rounded.Flag,
+                iconBgColor = Color(0xFFE53935).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFFE53935),
+                onClick = { showGoalDialog = true }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            val budgetStr = activeGoal?.monthlyBudget?.let { "${currency.symbol}$it" } ?: "未设置"
+            WeChatSettingsItem(
+                title = "每月烟草预算",
+                value = budgetStr,
+                icon = Icons.Rounded.AccountBalanceWallet,
+                iconBgColor = Color(0xFFFB8C00).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFFFB8C00),
+                onClick = { showGoalDialog = true }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            val quitDateStr = activeGoal?.targetQuitDate?.let {
+                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it))
+            } ?: "未设置"
+            WeChatSettingsItem(
+                title = "完全戒烟目标日",
+                value = quitDateStr,
+                icon = Icons.Rounded.CalendarMonth,
+                iconBgColor = Color(0xFF00ACC1).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFF00ACC1),
+                onClick = { showGoalDialog = true }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            WeChatSettingsItem(
+                title = "平均间隔过滤阈值",
+                subtitle = "排除间隔>${maxIntervalHours}小时的数据",
+                value = "${maxIntervalHours} 小时",
+                icon = Icons.Rounded.Timer,
+                iconBgColor = Color(0xFFD81B60).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFFD81B60),
+                onClick = { showIntervalDialog = true }
+            )
+        }
+
+        // Group 3: 数据与云端备份 (Demo Mode & Cloud Sync)
+        WeChatSettingsGroup(title = "数据与同步") {
+            WeChatSettingsItem(
+                title = "Demo 模拟体验数据",
+                subtitle = "近60天模拟烟民真实行为数据",
+                icon = Icons.Rounded.BugReport,
+                iconBgColor = Color(0xFF3949AB).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFF3949AB),
+                showChevron = false,
+                trailingContent = {
+                    Switch(
+                        checked = isDemoMode,
+                        onCheckedChange = { viewModel.toggleDemoMode(it) }
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        AppLanguage.values().forEach { l ->
-                            FilterChip(
-                                selected = lang == l,
-                                onClick = { viewModel.setAppLanguage(l) },
-                                label = { Text(l.displayName, fontSize = 12.sp) },
-                                leadingIcon = if (lang == l) {
-                                    { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                } else null,
-                                modifier = Modifier.weight(1f)
-                            )
+                }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            WeChatSettingsItem(
+                title = "云端备份与恢复",
+                value = if (syncState is SyncState.Success) "已同步" else "点击备份",
+                icon = Icons.Rounded.CloudSync,
+                iconBgColor = Color(0xFF00897B).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFF00897B),
+                onClick = { showCloudSyncDialog = true }
+            )
+        }
+
+        // Group 4: 关于 (About)
+        WeChatSettingsGroup(title = "关于软件") {
+            WeChatSettingsItem(
+                title = "刷新 AI 戒烟教练建议",
+                value = "点击刷新",
+                icon = Icons.Rounded.AutoAwesome,
+                iconBgColor = Color(0xFF7E57C2).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFF7E57C2),
+                onClick = { viewModel.fetchAiAdvice() }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            WeChatSettingsItem(
+                title = "关于 Guard 控烟Guard",
+                subtitle = "版本号 v2.0 (Build 2026.07)",
+                value = "v2.0",
+                icon = Icons.Rounded.Info,
+                iconBgColor = Color(0xFF757575).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFF757575),
+                showChevron = false
+            )
+        }
+    }
+
+    // ================= Dialogs =================
+    if (showLanguageDialog) {
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Translate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("语言选择 (Language)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppLanguage.values().forEach { l ->
+                        Surface(
+                            onClick = {
+                                viewModel.setAppLanguage(l)
+                                showLanguageDialog = false
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (lang == l) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = l.displayName,
+                                    fontWeight = if (lang == l) FontWeight.Bold else FontWeight.Normal
+                                )
+                                if (lang == l) {
+                                    Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
                         }
                     }
                 }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLanguageDialog = false }) { Text("取消") }
+            }
+        )
+    }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                // Section 2: Theme Mode Switcher
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = AppStrings.get("select_theme_mode", lang),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+    if (showThemeDialog) {
+        AlertDialog(
+            onDismissRequest = { showThemeDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("主题外观设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Theme Mode
+                    Text("主题模式", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1693,198 +1915,231 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                             FilterChip(
                                 selected = themeMode == mode,
                                 onClick = { viewModel.setAppThemeMode(mode) },
-                                label = { Text(label, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                leadingIcon = {
-                                    val icon = when (mode) {
-                                        AppThemeMode.SYSTEM -> Icons.Rounded.BrightnessAuto
-                                        AppThemeMode.LIGHT -> Icons.Rounded.LightMode
-                                        AppThemeMode.DARK -> Icons.Rounded.DarkMode
-                                    }
-                                    Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
-                                },
+                                label = { Text(label, fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
                     }
-                }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    HorizontalDivider()
 
-                // Section 3: Color Scheme Palette Switcher
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = AppStrings.get("select_color_preset", lang),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    // Color Preset
+                    Text("配色方案", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            AppColorPreset.values().take(2).forEach { preset ->
-                                val label = if (lang == AppLanguage.EN) preset.labelEn else preset.labelZh
-                                FilterChip(
-                                    selected = colorPreset == preset,
-                                    onClick = { viewModel.setAppColorPreset(preset) },
-                                    label = { Text(label, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    leadingIcon = {
+                        AppColorPreset.values().forEach { preset ->
+                            val label = if (lang == AppLanguage.EN) preset.labelEn else preset.labelZh
+                            Surface(
+                                onClick = { viewModel.setAppColorPreset(preset) },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (colorPreset == preset) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
                                         Box(
                                             modifier = Modifier
-                                                .size(12.dp)
+                                                .size(16.dp)
                                                 .background(preset.primary, CircleShape)
                                         )
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            AppColorPreset.values().drop(2).forEach { preset ->
-                                val label = if (lang == AppLanguage.EN) preset.labelEn else preset.labelZh
-                                FilterChip(
-                                    selected = colorPreset == preset,
-                                    onClick = { viewModel.setAppColorPreset(preset) },
-                                    label = { Text(label, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    leadingIcon = {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(12.dp)
-                                                .background(preset.primary, CircleShape)
-                                        )
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(label, fontWeight = if (colorPreset == preset) FontWeight.Bold else FontWeight.Normal, fontSize = 13.sp)
+                                    }
+                                    if (colorPreset == preset) {
+                                        Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            },
+            confirmButton = {
+                Button(onClick = { showThemeDialog = false }) { Text("完成") }
             }
-        }
+        )
+    }
 
-        // Expandable Card 2: Goal Setting Card
-        ExpandableSettingsCard(
-            title = AppStrings.get("goal_card_title", lang),
-            icon = Icons.Rounded.Flag,
-            initialExpanded = false
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = limitInput,
-                    onValueChange = { limitInput = it },
-                    label = { Text(AppStrings.get("daily_limit_label", lang)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = budgetInput,
-                    onValueChange = { budgetInput = it },
-                    label = { Text(AppStrings.get("monthly_budget_label", lang)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                val dateLabel = if (quitDateTimestamp != null) {
-                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    AppStrings.get("target_quit_date_label", lang, sdf.format(Date(quitDateTimestamp!!)))
-                } else {
-                    AppStrings.get("set_target_quit_date", lang)
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        val calendar = Calendar.getInstance()
-                        DatePickerDialog(
-                            context,
-                            { _, year, month, dayOfMonth ->
-                                val selected = Calendar.getInstance().apply {
-                                    set(Calendar.YEAR, year)
-                                    set(Calendar.MONTH, month)
-                                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                                }
-                                quitDateTimestamp = selected.timeInMillis
-                            },
-                            calendar.get(Calendar.YEAR),
-                            calendar.get(Calendar.MONTH),
-                            calendar.get(Calendar.DAY_OF_MONTH)
-                        ).show()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(imageVector = Icons.Rounded.CalendarMonth, contentDescription = null)
+    if (showCurrencyDialog) {
+        AlertDialog(
+            onDismissRequest = { showCurrencyDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Payments, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(dateLabel)
+                    Text("货币设置 (Currency)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "请选择用于界面全域价格与开销统计的货币：",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    AppCurrency.values().forEach { curr ->
+                        val isSelected = currency == curr
+                        Surface(
+                            onClick = {
+                                viewModel.setAppCurrency(curr)
+                                showCurrencyDialog = false
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = curr.getOptionLabel(lang),
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                                if (isSelected) {
+                                    Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCurrencyDialog = false }) { Text("取消") }
+            }
+        )
+    }
 
+    if (showGoalDialog) {
+        var limitInput by remember { mutableStateOf(activeGoal?.dailyLimit?.toString() ?: "10") }
+        var budgetInput by remember { mutableStateOf(activeGoal?.monthlyBudget?.toString() ?: "") }
+        var quitDateTs by remember { mutableStateOf(activeGoal?.targetQuitDate) }
+
+        AlertDialog(
+            onDismissRequest = { showGoalDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Flag, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("控烟与预算目标", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "提示：每日吸烟限制量针对的是每天的【自购自抽 + 社交接烟】总和支数！",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    OutlinedTextField(
+                        value = limitInput,
+                        onValueChange = { limitInput = it },
+                        label = { Text("每日吸烟限制 (自抽+接烟, 支/天)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = budgetInput,
+                        onValueChange = { budgetInput = it },
+                        label = { Text("每月烟草预算金额 (${currency.symbol})") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    val dateLabel = quitDateTs?.let {
+                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it))
+                    } ?: "点击选择完全戒烟目标日"
+
+                    OutlinedButton(
+                        onClick = {
+                            val calendar = Calendar.getInstance()
+                            DatePickerDialog(
+                                context,
+                                { _, year, month, dayOfMonth ->
+                                    val selected = Calendar.getInstance().apply {
+                                        set(Calendar.YEAR, year)
+                                        set(Calendar.MONTH, month)
+                                        set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                                    }
+                                    quitDateTs = selected.timeInMillis
+                                },
+                                calendar.get(Calendar.YEAR),
+                                calendar.get(Calendar.MONTH),
+                                calendar.get(Calendar.DAY_OF_MONTH)
+                            ).show()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(imageVector = Icons.Rounded.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(dateLabel, fontSize = 13.sp)
+                    }
+                }
+            },
+            confirmButton = {
                 Button(
                     onClick = {
                         val limit = limitInput.toIntOrNull() ?: 10
                         val budget = budgetInput.toDoubleOrNull()
-                        viewModel.updateGoal(limit, quitDateTimestamp, budget)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(AppStrings.get("save_goal_btn", lang), fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // Expandable Card: Interval Calculation Threshold Settings
-        ExpandableSettingsCard(
-            title = AppStrings.get("interval_filter_card_title", lang),
-            icon = Icons.Rounded.Timer,
-            initialExpanded = false
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = AppStrings.get("interval_threshold_desc", lang),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 16.sp
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = AppStrings.get("interval_threshold_label", lang),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "${maxIntervalHours} 小时",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf(4, 6, 8, 12, 24).forEach { hours ->
-                        FilterChip(
-                            selected = maxIntervalHours == hours,
-                            onClick = { viewModel.setMaxIntervalThresholdHours(hours) },
-                            label = { Text("${hours}小时", fontSize = 11.sp) },
-                            modifier = Modifier.weight(1f)
-                        )
+                        viewModel.updateGoal(limit, quitDateTs, budget)
+                        showGoalDialog = false
                     }
-                }
-
-                var customInput by remember(maxIntervalHours) { mutableStateOf(maxIntervalHours.toString()) }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGoalDialog = false }) { Text("取消") }
+            }
+        )
+    }
+
+    if (showIntervalDialog) {
+        AlertDialog(
+            onDismissRequest = { showIntervalDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("平均间隔过滤阀值设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "计算平均吸烟间隔时间时，将自动排除两次吸烟间隔大于 X 小时的数据（通常为睡眠或长时间禁烟期）。",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 16.sp
+                    )
+
+                    Text("选择阀值 X（默认 6 小时）:", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(4, 6, 8, 12, 24).forEach { hours ->
+                            FilterChip(
+                                selected = maxIntervalHours == hours,
+                                onClick = { viewModel.setMaxIntervalThresholdHours(hours) },
+                                label = { Text("${hours}小时", fontSize = 11.sp) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    var customInput by remember(maxIntervalHours) { mutableStateOf(maxIntervalHours.toString()) }
                     OutlinedTextField(
                         value = customInput,
                         onValueChange = { input ->
@@ -1895,98 +2150,176 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                 }
                             }
                         },
-                        label = { Text("自定义阀值 X (1-24小时)", fontSize = 11.sp) },
+                        label = { Text("自定义阀值 (1-24小时)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Button(
-                        onClick = {
-                            val h = customInput.toIntOrNull() ?: 6
-                            viewModel.setMaxIntervalThresholdHours(h)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showIntervalDialog = false }) { Text("确定") }
+            }
+        )
+    }
+
+    if (showCloudSyncDialog) {
+        AlertDialog(
+            onDismissRequest = { showCloudSyncDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("云端数据备份与恢复", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = AppStrings.get("cloud_desc", lang),
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                viewModel.backupData()
+                                showCloudSyncDialog = false
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(imageVector = Icons.Rounded.Backup, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("立即备份", fontSize = 13.sp)
                         }
-                    ) {
-                        Text("保存")
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.restoreData()
+                                showCloudSyncDialog = false
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(imageVector = Icons.Rounded.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("下载还原", fontSize = 13.sp)
+                        }
                     }
                 }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCloudSyncDialog = false }) { Text("关闭") }
+            }
+        )
+    }
+}
+
+@Composable
+fun WeChatSettingsGroup(
+    title: String? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (title != null) {
+            Text(
+                text = title,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 8.dp, bottom = 6.dp, top = 4.dp)
+            )
+        }
+        Card(
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column {
+                content()
             }
         }
+    }
+}
 
-        // Expandable Card 3: Demo Data Toggle
-        ExpandableSettingsCard(
-            title = AppStrings.get("demo_card_title", lang),
-            icon = Icons.Rounded.BugReport,
-            initialExpanded = false
+@Composable
+fun WeChatSettingsItem(
+    title: String,
+    subtitle: String? = null,
+    value: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    iconBgColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    iconTintColor: Color = MaterialTheme.colorScheme.primary,
+    showChevron: Boolean = true,
+    trailingContent: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null
+) {
+    Surface(
+        onClick = { onClick?.invoke() },
+        enabled = onClick != null,
+        color = Color.Transparent
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            if (icon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(iconBgColor, RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(AppStrings.get("demo_toggle_label", lang), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text(AppStrings.get("demo_toggle_desc", lang), fontSize = 12.sp, color = Color.Gray)
-                    }
-                    Switch(
-                        checked = isDemoMode,
-                        onCheckedChange = { viewModel.toggleDemoMode(it) }
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconTintColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-        }
 
-        // Expandable Card 4: Cloud Backup
-        ExpandableSettingsCard(
-            title = AppStrings.get("cloud_card_title", lang),
-            icon = Icons.Rounded.CloudSync,
-            initialExpanded = false
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (value != null) {
                 Text(
-                    text = AppStrings.get("cloud_desc", lang),
-                    fontSize = 12.sp,
-                    color = Color.Gray
+                    text = value,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Button(
-                        onClick = { viewModel.backupData() },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(imageVector = Icons.Rounded.Backup, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(AppStrings.get("upload_backup", lang), fontSize = 13.sp)
-                    }
-
-                    OutlinedButton(
-                        onClick = { viewModel.restoreData() },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(imageVector = Icons.Rounded.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(AppStrings.get("download_backup", lang), fontSize = 13.sp)
-                    }
-                }
+                Spacer(modifier = Modifier.width(4.dp))
             }
-        }
 
-        // Expandable Card 4: About Section
-        ExpandableSettingsCard(
-            title = "关于软件 (About)",
-            icon = Icons.Rounded.Info,
-            initialExpanded = false
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("吸烟跟踪Guard · 科学控烟助手", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text("版本号: v1.2.0 (Build 2026.07)", fontSize = 12.sp, color = Color.Gray)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "本软件专为理性控烟与社交社交场景打造，独创‘自购自抽’、‘社交递烟’与‘社交接烟’三维分类模型，精确计算戒烟健康与开销投入。",
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp
+            if (trailingContent != null) {
+                trailingContent()
+            } else if (showChevron) {
+                Icon(
+                    imageVector = Icons.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
