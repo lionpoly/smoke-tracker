@@ -5,10 +5,17 @@ import kotlinx.coroutines.isActive
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -158,9 +165,13 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
         val secs = (diff / 1000) % 60
         val mins = (diff / (1000 * 60)) % 60
         val hours = diff / (1000 * 3600)
-        String.format("%02d小时%02d分%02d秒", hours, mins, secs)
+        if (lang == AppLanguage.EN) {
+            String.format("%02dh %02dm %02ds", hours, mins, secs)
+        } else {
+            String.format("%02d小时%02d分%02d秒", hours, mins, secs)
+        }
     } else {
-        "暂无打卡记录"
+        AppStrings.get("timer_no_logs", lang)
     }
 
     Column(
@@ -189,10 +200,66 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "今日实际吸烟（自抽+接烟共${stats.todayTotalCount}支）已超出目标限制（${stats.currentGoalLimit}支），请注意健康！",
+                        text = AppStrings.get("over_limit_warning", lang, stats.todayTotalCount, stats.currentGoalLimit),
                         color = Color(0xFFC62828),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // Dedicated High-Contrast Dynamic Smoke-Free Timer Card
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Timer,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier
+                                    .padding(6.dp)
+                                    .size(16.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = AppStrings.get("timer_since_last", lang),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = elapsedText,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (lastLog != null) AppStrings.get("timer_subtitle_good", lang) else AppStrings.get("timer_no_logs", lang),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
                 }
             }
@@ -233,7 +300,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     color = MaterialTheme.colorScheme.primary
                 ) {
                     Text(
-                        text = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", activeCigarette?.price ?: 25.0)} / 包",
+                        text = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", activeCigarette?.price ?: 25.0)} ${AppStrings.get("pack_unit", lang)}",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         color = MaterialTheme.colorScheme.onPrimary,
                         fontSize = 12.sp,
@@ -249,12 +316,19 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            val stickUnit = AppStrings.get("stick_unit", lang).trim()
+            val selfText = if (lang == AppLanguage.EN) "Self" else "自抽"
+            val recText = if (lang == AppLanguage.EN) "Received" else "接烟"
+            val targetText = if (lang == AppLanguage.EN) "Goal" else "目标"
+            val overText = if (lang == AppLanguage.EN) "Over Limit" else "已超标"
+            val onTrackText = if (lang == AppLanguage.EN) "On Track" else "符合目标"
+
             // Merged Card 1 (Self + Received) occupying 2/3 of content width
             StatCard(
-                title = "今日实际吸烟 (自抽+接烟)",
-                value = "${stats.todaySelfCount + stats.todayReceivedCount} 支",
-                detailText = "自抽 ${stats.todaySelfCount} 支 · 接烟 ${stats.todayReceivedCount} 支",
-                subtitle = "目标 ${stats.currentGoalLimit} 支/天 (${if (stats.isOverLimit) "已超标" else "符合目标"})",
+                title = if (lang == AppLanguage.EN) "Today Actual Smoking (Self + Received)" else "今日实际吸烟 (自抽+接烟)",
+                value = "${stats.todaySelfCount + stats.todayReceivedCount} $stickUnit",
+                detailText = "$selfText ${stats.todaySelfCount}$stickUnit · $recText ${stats.todayReceivedCount}$stickUnit",
+                subtitle = "$targetText ${stats.currentGoalLimit} $stickUnit/day (${if (stats.isOverLimit) overText else onTrackText})",
                 icon = Icons.Rounded.SmokingRooms,
                 iconTint = if (stats.isOverLimit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 color = MaterialTheme.colorScheme.surface,
@@ -263,10 +337,10 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
 
             // Card 2 (Shared Out) occupying 1/3 of content width
             StatCard(
-                title = "社交递烟",
-                value = "${stats.todaySharedCount} 支",
-                detailText = "分享给他人",
-                subtitle = "递烟开销",
+                title = AppStrings.get("stat_today_shared", lang),
+                value = "${stats.todaySharedCount} $stickUnit",
+                detailText = AppStrings.get("shared_subtitle", lang),
+                subtitle = if (lang == AppLanguage.EN) "Shared Cost" else "递烟开销",
                 icon = Icons.Rounded.CallMade,
                 iconTint = MaterialTheme.colorScheme.secondary,
                 color = MaterialTheme.colorScheme.surface,
@@ -280,18 +354,18 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             StatCard(
-                title = "今日吸烟开销",
+                title = AppStrings.get("stat_today_cost", lang),
                 value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todayCost)}",
-                subtitle = "自购+递烟花费",
+                subtitle = AppStrings.get("cost_subtitle", lang),
                 icon = Icons.Rounded.Payments,
                 iconTint = MaterialTheme.colorScheme.primary,
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.weight(1f)
             )
             StatCard(
-                title = "接烟省下金额",
+                title = AppStrings.get("stat_today_saved", lang),
                 value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todaySavedFromReceived)}",
-                subtitle = "他请客省下的",
+                subtitle = AppStrings.get("saved_subtitle", lang),
                 icon = Icons.Rounded.CardGiftcard,
                 iconTint = Color(0xFF2E7D32),
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -299,48 +373,19 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             )
         }
 
-        // Quick Action Buttons with Dynamic Timer Badge
+        // Quick Action Buttons
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "快速打卡极速记录",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Timer,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "距上次 $elapsedText",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = AppStrings.get("quick_record_title", lang),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Row(
@@ -351,7 +396,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     Button(
                         onClick = {
                             val cigId = activeCigarette?.id ?: 1
-                            viewModel.addSmokingLog(cigId, 1, "SELF", "极速记录")
+                            viewModel.addSmokingLog(cigId, 1, "SELF", if (lang == AppLanguage.EN) "Quick Log" else "极速记录")
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -359,14 +404,14 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     ) {
                         Icon(imageVector = Icons.Rounded.SmokingRooms, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("自购自抽 +1", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(AppStrings.get("quick_self_btn", lang), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
 
                     // Quick 2: Shared Out
                     Button(
                         onClick = {
                             val cigId = activeCigarette?.id ?: 1
-                            viewModel.addSmokingLog(cigId, 1, "SHARED_OUT", "社交递烟")
+                            viewModel.addSmokingLog(cigId, 1, "SHARED_OUT", if (lang == AppLanguage.EN) "Shared Out" else "社交递烟")
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
@@ -374,14 +419,14 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     ) {
                         Icon(imageVector = Icons.Rounded.CallMade, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("社交递烟 +1", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(AppStrings.get("quick_shared_btn", lang), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
 
                     // Quick 3: Received In
                     Button(
                         onClick = {
                             val cigId = activeCigarette?.id ?: 1
-                            viewModel.addSmokingLog(cigId, 1, "RECEIVED_IN", "他人递烟")
+                            viewModel.addSmokingLog(cigId, 1, "RECEIVED_IN", if (lang == AppLanguage.EN) "Received In" else "他人递烟")
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
@@ -389,7 +434,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     ) {
                         Icon(imageVector = Icons.Rounded.CallReceived, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("社交接烟 +1", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(AppStrings.get("quick_received_btn", lang), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
 
@@ -401,7 +446,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 ) {
                     Icon(imageVector = Icons.Rounded.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("自定义多支 / 备注记录", fontSize = 13.sp)
+                    Text(AppStrings.get("custom_record_btn", lang), fontSize = 13.sp)
                 }
             }
         }
@@ -479,12 +524,12 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "今日打卡记录明细",
+                text = AppStrings.get("today_logs_header", lang),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "共 ${logs.size} 条",
+                text = AppStrings.get("log_count", lang, logs.size),
                 fontSize = 12.sp,
                 color = Color.Gray
             )
@@ -498,7 +543,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "今日尚未打卡，点击下方按钮开始记录第一支吧！",
+                    text = AppStrings.get("no_logs_today", lang),
                     color = Color.Gray,
                     fontSize = 13.sp
                 )
@@ -509,9 +554,9 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 logs.take(10).forEach { log ->
                     val cig = cigarettes.firstOrNull { it.id == log.cigaretteId }
                     val logTypeName = when (log.logType) {
-                        "SHARED_OUT" -> "社交递烟"
-                        "RECEIVED_IN" -> "社交接烟"
-                        else -> "自购自抽"
+                        "SHARED_OUT" -> AppStrings.get("type_shared", lang)
+                        "RECEIVED_IN" -> AppStrings.get("type_received", lang)
+                        else -> AppStrings.get("type_self", lang)
                     }
                     val badgeColor = when (log.logType) {
                         "SHARED_OUT" -> MaterialTheme.colorScheme.secondary
@@ -551,8 +596,10 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                 Spacer(modifier = Modifier.width(8.dp))
 
                                 Column(modifier = Modifier.weight(1f)) {
+                                    val defaultCigName = if (lang == AppLanguage.EN) "Cigarette" else "香烟"
+                                    val stickLabel = AppStrings.get("stick_unit", lang).trim()
                                     Text(
-                                        text = "${cig?.name ?: "香烟"} x${log.quantity}支",
+                                        text = "${cig?.name ?: defaultCigName} x${log.quantity}$stickLabel",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
                                         maxLines = 1,
@@ -560,7 +607,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                     )
                                     if (log.note.isNotEmpty()) {
                                         Text(
-                                            text = "备注: ${log.note}",
+                                            text = AppStrings.get("note_prefix", lang, log.note),
                                             fontSize = 11.sp,
                                             color = Color.Gray,
                                             maxLines = 1,
@@ -581,7 +628,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                         maxLines = 1
                                     )
                                     Text(
-                                        text = if (log.logType == "RECEIVED_IN") "¥0.00 (免费)" else "¥${String.format(Locale.getDefault(), "%.2f", log.cost)}",
+                                        text = if (log.logType == "RECEIVED_IN") AppStrings.get("free_badge", lang) else "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", log.cost)}",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (log.logType == "RECEIVED_IN") Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
@@ -595,7 +642,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Close,
-                                        contentDescription = "删除记录",
+                                        contentDescription = if (lang == AppLanguage.EN) "Delete Log" else "删除记录",
                                         tint = Color.Gray,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1064,7 +1111,7 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         Spacer(modifier = Modifier.width(16.dp))
                         LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
                     } else {
-                        LegendItem(color = MaterialTheme.colorScheme.primary, text = "实际吸烟(自抽+接烟)")
+                        LegendItem(color = MaterialTheme.colorScheme.primary, text = "自购自抽")
                         Spacer(modifier = Modifier.width(12.dp))
                         LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
                         Spacer(modifier = Modifier.width(12.dp))
@@ -1449,6 +1496,10 @@ fun TrendChartComposable(
                 val topLeftX = leftPx + (usableWidth - diameter) / 2
                 val topLeftY = topPx + (usableHeight - diameter) / 2
 
+                val centerX = topLeftX + diameter / 2f
+                val centerY = topLeftY + diameter / 2f
+                val radius = diameter / 2f
+
                 drawArc(
                     color = primaryColor,
                     startAngle = 0f,
@@ -1473,6 +1524,38 @@ fun TrendChartComposable(
                     topLeft = Offset(topLeftX, topLeftY),
                     size = Size(diameter, diameter)
                 )
+
+                // Draw percentage text on pie slices
+                val paintPieText = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    textSize = 12.sp.toPx()
+                    textAlign = android.graphics.Paint.Align.CENTER
+                    isFakeBoldText = true
+                    isAntiAlias = true
+                }
+
+                val slices = listOf(
+                    Triple(totalSelf, 0f, sweepSelf),
+                    Triple(totalShared, sweepSelf, sweepShared),
+                    Triple(totalRec, sweepSelf + sweepShared, sweepRec)
+                )
+
+                slices.forEach { (count, startAngle, sweepAngle) ->
+                    if (sweepAngle > 12f) { // Render label for slices larger than ~3%
+                        val pct = (count / grandTotal) * 100f
+                        val midAngleDeg = startAngle + sweepAngle / 2f
+                        val midRad = Math.toRadians(midAngleDeg.toDouble())
+                        val labelX = centerX + (radius * 0.62f) * Math.cos(midRad).toFloat()
+                        val labelY = centerY + (radius * 0.62f) * Math.sin(midRad).toFloat() + 4.dp.toPx()
+
+                        val pctText = if (pct % 1f == 0f) {
+                            String.format(Locale.getDefault(), "%.0f%%", pct)
+                        } else {
+                            String.format(Locale.getDefault(), "%.1f%%", pct)
+                        }
+                        drawContext.canvas.nativeCanvas.drawText(pctText, labelX, labelY, paintPieText)
+                    }
+                }
             }
         }
     }
@@ -1481,6 +1564,7 @@ fun TrendChartComposable(
 @Composable
 fun StoreScreen(viewModel: SmokingViewModel) {
     val cigarettes by viewModel.cigarettes.collectAsStateWithLifecycle()
+    val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
     var showAddCigaretteDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -1488,9 +1572,9 @@ fun StoreScreen(viewModel: SmokingViewModel) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Fix header button squish issue
+        // Header Row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1498,12 +1582,12 @@ fun StoreScreen(viewModel: SmokingViewModel) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "我的烟盒库 (Cigarette Box)",
+                    text = AppStrings.get("box_title", lang),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "管理常用香烟种类与零售价格规则",
+                    text = AppStrings.get("box_subtitle", lang),
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
@@ -1516,7 +1600,33 @@ fun StoreScreen(viewModel: SmokingViewModel) {
             ) {
                 Icon(imageVector = Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("添加烟草", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(AppStrings.get("add_cigarette_btn", lang), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Swipe Gesture Hint Banner
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Swipe,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = AppStrings.get("swipe_hint", lang),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
 
@@ -1527,14 +1637,14 @@ fun StoreScreen(viewModel: SmokingViewModel) {
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "烟盒为空，请点击右上角【添加烟草】", color = Color.Gray)
+                Text(text = AppStrings.get("empty_box", lang), color = Color.Gray)
             }
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(cigarettes) { cig ->
+                items(cigarettes, key = { it.id }) { cig ->
                     CigaretteItemCard(
                         cigarette = cig,
                         viewModel = viewModel,
@@ -1558,7 +1668,7 @@ fun StoreScreen(viewModel: SmokingViewModel) {
     }
 }
 
-// Expandable Card Item for Cigarette Box with inline editing & active toggle
+// Expandable Card Item for Cigarette Box with swipe actions & inline editing
 @Composable
 fun CigaretteItemCard(
     cigarette: Cigarette,
@@ -1569,6 +1679,7 @@ fun CigaretteItemCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
+    val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
 
     var editName by remember { mutableStateOf(cigarette.name) }
     var editPriceType by remember { mutableStateOf(cigarette.priceType) }
@@ -1576,181 +1687,286 @@ fun CigaretteItemCard(
     var editCartonPrice by remember { mutableStateOf(cigarette.cartonPrice.toString()) }
     var editPackSize by remember { mutableStateOf(cigarette.packSize.toString()) }
 
-    val unitPrice = cigarette.price / cigarette.packSize.coerceAtLeast(1)
-    val packStr = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", cigarette.price)}/包"
-    val cartonStr = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", cigarette.cartonPrice)}/条"
-    val stickStr = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", unitPrice)}/支"
-    val specText = "$packStr / $cartonStr / $stickStr"
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    val animatedOffsetX by animateFloatAsState(
+        targetValue = offsetX,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "swipe_offset"
+    )
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (cigarette.isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    val unitPrice = cigarette.price / cigarette.packSize.coerceAtLeast(1)
+    val packStr = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", cigarette.price)}${AppStrings.get("pack_unit", lang)}"
+    val cartonStr = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", cigarette.cartonPrice)}${AppStrings.get("carton_unit", lang)}"
+    val stickStr = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", unitPrice)}${AppStrings.get("stick_unit", lang)}"
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize()
+            .clip(RoundedCornerShape(16.dp))
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Header Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (cigarette.isActive) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary
-                        ) {
-                            Text(
-                                text = "使用中",
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
+        // Swipe Background Action Indicators
+        Row(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    when {
+                        offsetX > 20f -> Color(0xFF2E7D32) // Green for Set Active
+                        offsetX < -20f -> MaterialTheme.colorScheme.error // Red for Delete
+                        else -> MaterialTheme.colorScheme.surfaceVariant
                     }
-
+                )
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = if (offsetX > 0) Arrangement.Start else Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (offsetX > 20f) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = cigarette.name,
+                        text = AppStrings.get("set_active_swipe", lang),
+                        color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        fontSize = 14.sp
                     )
                 }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
+            } else if (offsetX < -20f) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (!cigarette.isActive) {
-                        TextButton(
-                            onClick = onSetActive,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text("设为当前", fontSize = 12.sp)
+                    Text(
+                        text = AppStrings.get("delete_swipe", lang),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Rounded.Delete,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        // Foreground Card
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (cigarette.isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface
+            ),
+            border = if (cigarette.isActive) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(animatedOffsetX.roundToInt(), 0) }
+                .pointerInput(cigarette.id) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (offsetX > 100f) {
+                                if (!cigarette.isActive) onSetActive()
+                            } else if (offsetX < -100f) {
+                                onDelete()
+                            }
+                            offsetX = 0f
+                        },
+                        onDragCancel = { offsetX = 0f },
+                        onHorizontalDrag = { _, dragAmount ->
+                            offsetX = (offsetX + dragAmount).coerceIn(-180f, 180f)
                         }
+                    )
+                }
+                .animateContentSize()
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                // Header Row (Clean & Spacious - NO explicit buttons!)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (cigarette.isActive) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary
+                            ) {
+                                Text(
+                                    text = AppStrings.get("in_use", lang),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+
+                        Text(
+                            text = cigarette.name,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
 
-                    IconButton(onClick = { expanded = !expanded }) {
+                    IconButton(
+                        onClick = { expanded = !expanded },
+                        modifier = Modifier.size(32.dp)
+                    ) {
                         Icon(
                             imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                            contentDescription = "展开编辑"
-                        )
-                    }
-
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            imageVector = Icons.Rounded.Delete,
-                            contentDescription = "删除",
-                            tint = MaterialTheme.colorScheme.error
+                            contentDescription = if (lang == AppLanguage.EN) "Toggle details" else "展开编辑",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Pricing Specifications
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = specText,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                )
-            }
-
-            // Expanded Edit Mode
-            AnimatedVisibility(visible = expanded) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                // Pricing Specs Chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Divider()
-
-                    Text("编辑香烟信息与规则:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-
-                    OutlinedTextField(
-                        value = editName,
-                        onValueChange = { editName = it },
-                        label = { Text("品牌名称") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.weight(1f)
                     ) {
-                        FilterChip(
-                            selected = editPriceType == "PACK",
-                            onClick = { editPriceType = "PACK" },
-                            label = { Text("按单包计算") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        FilterChip(
-                            selected = editPriceType == "CARTON",
-                            onClick = { editPriceType = "CARTON" },
-                            label = { Text("按单条(10包)计算") },
-                            modifier = Modifier.weight(1f)
+                        Text(
+                            text = packStr,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 5.dp, horizontal = 4.dp),
+                            maxLines = 1
                         )
                     }
-
-                    if (editPriceType == "PACK") {
-                        OutlinedTextField(
-                            value = editPrice,
-                            onValueChange = { editPrice = it },
-                            label = { Text("单包零售价 (元)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    } else {
-                        OutlinedTextField(
-                            value = editCartonPrice,
-                            onValueChange = { editCartonPrice = it },
-                            label = { Text("单条(10包)零售价 (元)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = cartonStr,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.secondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 5.dp, horizontal = 4.dp),
+                            maxLines = 1
                         )
                     }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = stickStr,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF2E7D32),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 5.dp, horizontal = 4.dp),
+                            maxLines = 1
+                        )
+                    }
+                }
 
-                    Button(
-                        onClick = {
-                            val p = editPrice.toDoubleOrNull() ?: cigarette.price
-                            val cp = editCartonPrice.toDoubleOrNull() ?: cigarette.cartonPrice
-                            val ps = editPackSize.toIntOrNull() ?: cigarette.packSize
-                            val calcPrice = if (editPriceType == "CARTON") cp / 10.0 else p
+                // Expanded Edit Section
+                AnimatedVisibility(visible = expanded) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Divider()
 
-                            onUpdate(
-                                cigarette.copy(
-                                    name = editName,
-                                    price = calcPrice,
-                                    cartonPrice = if (editPriceType == "PACK") p * 10.0 else cp,
-                                    priceType = editPriceType,
-                                    packSize = ps
-                                )
+                        Text(
+                            text = AppStrings.get("edit_rule_title", lang),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+
+                        OutlinedTextField(
+                            value = editName,
+                            onValueChange = { editName = it },
+                            label = { Text(AppStrings.get("brand_name", lang)) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = editPriceType == "PACK",
+                                onClick = { editPriceType = "PACK" },
+                                label = { Text(AppStrings.get("price_type_pack", lang)) },
+                                modifier = Modifier.weight(1f)
                             )
-                            expanded = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("保存修改", fontWeight = FontWeight.Bold)
+                            FilterChip(
+                                selected = editPriceType == "CARTON",
+                                onClick = { editPriceType = "CARTON" },
+                                label = { Text(AppStrings.get("price_type_carton", lang)) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        if (editPriceType == "PACK") {
+                            OutlinedTextField(
+                                value = editPrice,
+                                onValueChange = { editPrice = it },
+                                label = { Text(AppStrings.get("pack_price", lang)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            OutlinedTextField(
+                                value = editCartonPrice,
+                                onValueChange = { editCartonPrice = it },
+                                label = { Text(AppStrings.get("carton_price", lang)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                val p = editPrice.toDoubleOrNull() ?: cigarette.price
+                                val cp = editCartonPrice.toDoubleOrNull() ?: cigarette.cartonPrice
+                                val ps = editPackSize.toIntOrNull() ?: cigarette.packSize
+                                val calcPrice = if (editPriceType == "CARTON") cp / 10.0 else p
+
+                                onUpdate(
+                                    cigarette.copy(
+                                        name = editName,
+                                        price = calcPrice,
+                                        cartonPrice = if (editPriceType == "PACK") p * 10.0 else cp,
+                                        priceType = editPriceType,
+                                        packSize = ps
+                                    )
+                                )
+                                expanded = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(AppStrings.get("save_changes", lang), fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -1798,7 +2014,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
         WeChatSettingsGroup(title = "外观与语言") {
             // 1. Language Item
             WeChatSettingsItem(
-                title = "语言 (Language)",
+                title = "语言",
                 value = lang.displayName,
                 icon = Icons.Rounded.Translate,
                 iconBgColor = Color(0xFF1E88E5).copy(alpha = 0.15f),
@@ -1941,7 +2157,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
             WeChatSettingsItem(
-                title = "关于 Guard 控烟Guard",
+                title = "关于 控烟Guard",
                 subtitle = "开发者: Nonion · nonion.pl@gmail.com",
                 value = "v2.0",
                 icon = Icons.Rounded.Info,
@@ -1966,7 +2182,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Guard 控烟Guard 是一款专注于智能记录吸烟行为、分析社交社交社交关系与烟草开销、并提供量身打卡与控烟方案的全功能助手。",
+                        text = "控烟Guard 是一款专注于智能记录吸烟行为、分析社交社交社交关系与烟草开销、并提供量身打卡与控烟方案的全功能助手。",
                         fontSize = 12.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2008,7 +2224,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Translate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("语言选择 (Language)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("语言选择", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
@@ -2124,7 +2340,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.FontDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("字体样式设置 (Font Style)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("字体样式设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
