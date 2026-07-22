@@ -251,8 +251,9 @@ class SmokingViewModel(
         }
     }
 
-    private fun computeIntervalAndPeak(logs: List<SmokingLog>, maxIntervalHours: Int = 6): Pair<Int, String> {
-        if (logs.isEmpty()) return Pair(0, "无打卡")
+    private fun computeIntervalAndPeak(logs: List<SmokingLog>, maxIntervalHours: Int = 6, lang: AppLanguage = AppLanguage.ZH): Pair<Int, String> {
+        val noLogText = if (lang == AppLanguage.EN) "No logs" else "无打卡"
+        if (logs.isEmpty()) return Pair(0, noLogText)
 
         val sorted = logs.sortedBy { it.timestamp }
         var totalIntervalMs = 0L
@@ -290,7 +291,7 @@ class SmokingViewModel(
             val h = Calendar.getInstance().apply { timeInMillis = logs[0].timestamp }.get(Calendar.HOUR_OF_DAY)
             String.format("%02d:00-%02d:00", h, (h + 2) % 24)
         } else {
-            "无打卡"
+            noLogText
         }
 
         return Pair(avgMin, peakSlot)
@@ -308,6 +309,7 @@ class SmokingViewModel(
         val sdfDay = SimpleDateFormat("MM/dd", Locale.getDefault())
         val sdfMonth = SimpleDateFormat("yyyy/MM", Locale.getDefault())
 
+        val lang = appLanguage.value
         when (timeRange) {
             TrendTimeRange.LAST_7_DAYS -> {
                 for (i in 6 downTo 0) {
@@ -328,7 +330,7 @@ class SmokingViewModel(
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
-                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours)
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours, lang)
 
                     trend.add(
                         TrendDataItem(
@@ -355,7 +357,10 @@ class SmokingViewModel(
                 currentCal.set(Calendar.SECOND, 0)
                 currentCal.set(Calendar.MILLISECOND, 0)
 
-                val dayNames = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+                val dayNames = if (lang == AppLanguage.EN)
+                    arrayOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                else
+                    arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
                 for (i in 0..6) {
                     val dayCal = currentCal.clone() as Calendar
                     dayCal.add(Calendar.DAY_OF_YEAR, i)
@@ -369,7 +374,7 @@ class SmokingViewModel(
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
-                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours)
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours, lang)
 
                     trend.add(
                         TrendDataItem(
@@ -410,7 +415,7 @@ class SmokingViewModel(
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
-                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours)
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours, lang)
 
                     trend.add(
                         TrendDataItem(
@@ -430,7 +435,10 @@ class SmokingViewModel(
             }
             TrendTimeRange.SPECIFIC_YEAR -> {
                 val targetYear = cal.get(Calendar.YEAR)
-                val monthNames = arrayOf("1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月")
+                val monthNames = if (lang == AppLanguage.EN)
+                    arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+                else
+                    arrayOf("1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月")
                 for (month in 0..11) {
                     val monthStartCal = Calendar.getInstance().apply {
                         set(Calendar.YEAR, targetYear)
@@ -455,7 +463,7 @@ class SmokingViewModel(
                     val selfCost = monthLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = monthLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
-                    val (avgMin, peakSlot) = computeIntervalAndPeak(monthLogs, maxIntervalHours)
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(monthLogs, maxIntervalHours, lang)
 
                     trend.add(
                         TrendDataItem(
@@ -489,7 +497,7 @@ class SmokingViewModel(
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
                     val receivedSaved = receivedCount * 1.25
-                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours)
+                    val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours, lang)
 
                     trend.add(
                         TrendDataItem(

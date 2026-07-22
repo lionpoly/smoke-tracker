@@ -445,7 +445,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "AI 戒烟教练分析与建议",
+                            text = AppStrings.get("ai_advice_title", lang),
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
                         )
@@ -457,7 +457,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Refresh,
-                            contentDescription = "刷新 AI 建议",
+                            contentDescription = if (lang == AppLanguage.EN) "Refresh AI Advice" else "刷新 AI 建议",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -473,7 +473,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         ) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("AI 戒烟教练正在根据您的最新吸烟与社交接烟数据分析中...", fontSize = 13.sp)
+                            Text(AppStrings.get("ai_advice_loading", lang), fontSize = 13.sp)
                         }
                     }
                     is AiAdviceState.Success -> {
@@ -633,6 +633,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     if (showAddLogDialog) {
         AddLogDialog(
             cigarettes = cigarettes,
+            lang = lang,
             onDismiss = { showAddLogDialog = false },
             onConfirm = { cigId, qty, logType, note ->
                 viewModel.addSmokingLog(cigId, qty, logType, note)
@@ -763,9 +764,9 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     if (selectedTimeRange == TrendTimeRange.SPECIFIC_MONTH || selectedTimeRange == TrendTimeRange.SPECIFIC_YEAR) {
                         val selectedCal by viewModel.selectedMonthYear.collectAsStateWithLifecycle()
                         val sdf = if (selectedTimeRange == TrendTimeRange.SPECIFIC_MONTH)
-                            SimpleDateFormat("yyyy年MM月", Locale.getDefault())
+                            SimpleDateFormat(if (lang == AppLanguage.EN) "MM/yyyy" else "yyyy年MM月", Locale.getDefault())
                         else
-                            SimpleDateFormat("yyyy年", Locale.getDefault())
+                            SimpleDateFormat(if (lang == AppLanguage.EN) "yyyy" else "yyyy年", Locale.getDefault())
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -781,7 +782,7 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "目标日期: ${sdf.format(selectedCal.time)}",
+                                    text = "${if (lang == AppLanguage.EN) "Target Date: " else "目标日期: "}${sdf.format(selectedCal.time)}",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -807,7 +808,13 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                 },
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Text("点击选择${if (selectedTimeRange == TrendTimeRange.SPECIFIC_MONTH) "月份" else "年份"}", fontSize = 12.sp)
+                                Text(
+                                    if (lang == AppLanguage.EN)
+                                        "Select ${if (selectedTimeRange == TrendTimeRange.SPECIFIC_MONTH) "Month" else "Year"}"
+                                    else
+                                        "点击选择${if (selectedTimeRange == TrendTimeRange.SPECIFIC_MONTH) "月份" else "年份"}",
+                                    fontSize = 12.sp
+                                )
                             }
                         }
                     } else if (selectedTimeRange == TrendTimeRange.CUSTOM_RANGE) {
@@ -815,8 +822,8 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         val customEnd by viewModel.customEndDate.collectAsStateWithLifecycle()
                         val dateSdf = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
 
-                        val startText = customStart?.let { dateSdf.format(Date(it)) } ?: "选择开始日期"
-                        val endText = customEnd?.let { dateSdf.format(Date(it)) } ?: "选择结束日期"
+                        val startText = customStart?.let { dateSdf.format(Date(it)) } ?: if (lang == AppLanguage.EN) "Select Start Date" else "选择开始日期"
+                        val endText = customEnd?.let { dateSdf.format(Date(it)) } ?: if (lang == AppLanguage.EN) "Select End Date" else "选择结束日期"
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
@@ -826,7 +833,7 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("自定义时间范围:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(if (lang == AppLanguage.EN) "Custom Date Range:" else "自定义时间范围:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Row(
@@ -862,7 +869,7 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                 Text(startText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
 
-                            Text("至", fontSize = 12.sp, color = Color.Gray)
+                            Text(if (lang == AppLanguage.EN) "to" else "至", fontSize = 12.sp, color = Color.Gray)
 
                             OutlinedButton(
                                 onClick = {
@@ -905,7 +912,7 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
         val validIntervals = trendData.filter { it.avgIntervalMinutes > 0 }.map { it.avgIntervalMinutes }
         val overallAvgInterval = if (validIntervals.isNotEmpty()) validIntervals.average().toInt() else 0
 
-        val peakSlots = trendData.filter { it.peakHourSlot != "无打卡" }.groupBy { it.peakHourSlot }
+        val peakSlots = trendData.filter { it.peakHourSlot != "无打卡" && it.peakHourSlot != "No logs" }.groupBy { it.peakHourSlot }
         val overallPeakSlot = peakSlots.maxByOrNull { it.value.size }?.key ?: "14:00 - 16:00"
 
         Card(
@@ -930,7 +937,7 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "聚焦自抽量、打卡间隔与高发吸烟时段",
+                            text = if (lang == AppLanguage.EN) "Focus on self-smoked, interval & peak hours" else "聚焦自抽量、打卡间隔与高发吸烟时段",
                             fontSize = 11.sp,
                             color = Color.Gray
                         )
@@ -944,14 +951,14 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 ) {
                     StatCard(
                         title = AppStrings.get("stat_daily_avg_self", lang),
-                        value = String.format(Locale.getDefault(), "%.1f 支", dailyAvgSelf),
-                        subtitle = "${AppStrings.get("stat_total_period_self", lang)}: ${totalSelfCount}支",
+                        value = String.format(Locale.getDefault(), if (lang == AppLanguage.EN) "%.1f sticks" else "%.1f 支", dailyAvgSelf),
+                        subtitle = "${AppStrings.get("stat_total_period_self", lang)}: ${totalSelfCount}${if (lang == AppLanguage.EN) " sticks" else "支"}",
                         modifier = Modifier.weight(1f)
                     )
                     StatCard(
                         title = AppStrings.get("stat_avg_interval", lang),
-                        value = if (overallAvgInterval > 0) "${overallAvgInterval}分钟" else AppStrings.get("no_interval_data", lang),
-                        subtitle = "已排除>${maxIntervalHours}小时间隔",
+                        value = if (overallAvgInterval > 0) "${overallAvgInterval}${if (lang == AppLanguage.EN) " mins" else "分钟"}" else AppStrings.get("no_interval_data", lang),
+                        subtitle = if (lang == AppLanguage.EN) "Excl. >${maxIntervalHours}h gaps" else "已排除>${maxIntervalHours}小时间隔",
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -963,15 +970,19 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     StatCard(
                         title = AppStrings.get("stat_peak_hours", lang),
                         value = overallPeakSlot,
-                        subtitle = "吸烟最密集窗口",
+                        subtitle = if (lang == AppLanguage.EN) "Peak smoking window" else "吸烟最密集窗口",
                         modifier = Modifier.weight(1f)
                     )
                     val dailyLimit = goal?.dailyLimit ?: 15
-                    val statusText = if (dailyAvgSelf <= dailyLimit) "🟢 控烟达标" else "🟠 超标预警"
+                    val statusText = if (dailyAvgSelf <= dailyLimit) {
+                        if (lang == AppLanguage.EN) "🟢 On Target" else "🟢 控烟达标"
+                    } else {
+                        if (lang == AppLanguage.EN) "🟠 Warning" else "🟠 超标预警"
+                    }
                     StatCard(
                         title = AppStrings.get("insight_title", lang),
                         value = statusText,
-                        subtitle = "限制目标: ${dailyLimit}支/天",
+                        subtitle = if (lang == AppLanguage.EN) "Limit: ${dailyLimit} sticks/day" else "限制目标: ${dailyLimit}支/天",
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -995,9 +1006,9 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = if (dailyAvgSelf > (goal?.dailyLimit ?: 15)) {
-                                "近期自抽量偏高，主要集中在 [${overallPeakSlot}]。建议在该时段常备无糖口香糖或深呼吸分散注意力，并尝试拉长单支间隔！"
+                                if (lang == AppLanguage.EN) "Recent self-smoked volume is high, peaking around [${overallPeakSlot}]. Consider sugar-free gum or deep breathing in this window to extend stick intervals!" else "近期自抽量偏高，主要集中在 [${overallPeakSlot}]。建议在该时段常备无糖口香糖或深呼吸分散注意力，并尝试拉长单支间隔！"
                             } else {
-                                "当前自抽习惯控制良好！平均间隔为 ${if (overallAvgInterval > 0) "${overallAvgInterval}分钟" else "规律良好"}，请保持有节奏的减量进度。"
+                                if (lang == AppLanguage.EN) "Your self-smoking habit is currently well-controlled! Average interval is ${if (overallAvgInterval > 0) "${overallAvgInterval} mins" else "steady"}. Keep up the steady reduction progress." else "当前自抽习惯控制良好！平均间隔为 ${if (overallAvgInterval > 0) "${overallAvgInterval}分钟" else "规律良好"}，请保持有节奏的减量进度。"
                             },
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
@@ -1047,13 +1058,22 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 val bannerText = if (selectedChartIndex in trendData.indices) {
                     val sel = trendData[selectedChartIndex]
                     if (selectedChartType == ChartType.LINE) {
-                        "【${sel.dateLabel}】自购自抽+社交接烟: ${sel.selfCount + sel.receivedCount}支 · 社交接烟: ${sel.receivedCount}支 (自抽:${sel.selfCount}支)"
+                        if (lang == AppLanguage.EN)
+                            "[${sel.dateLabel}] Total Smoked: ${sel.selfCount + sel.receivedCount} sticks · Received: ${sel.receivedCount} sticks (Self: ${sel.selfCount})"
+                        else
+                            "【${sel.dateLabel}】自购自抽+社交接烟: ${sel.selfCount + sel.receivedCount}支 · 社交接烟: ${sel.receivedCount}支 (自抽:${sel.selfCount}支)"
                     } else {
-                        "【${sel.dateLabel}】实际吸烟:${sel.selfCount + sel.receivedCount}支 (自抽:${sel.selfCount} 接:${sel.receivedCount}) · 递烟:${sel.sharedCount}支 · 花费:${currency.symbol}${String.format(Locale.getDefault(), "%.2f", sel.selfCost + sel.sharedCost)}"
+                        if (lang == AppLanguage.EN)
+                            "[${sel.dateLabel}] Smoked: ${sel.selfCount + sel.receivedCount} sticks (Self: ${sel.selfCount}, Rec: ${sel.receivedCount}) · Shared: ${sel.sharedCount} sticks · Spent: ${currency.symbol}${String.format(Locale.getDefault(), "%.2f", sel.selfCost + sel.sharedCost)}"
+                        else
+                            "【${sel.dateLabel}】实际吸烟:${sel.selfCount + sel.receivedCount}支 (自抽:${sel.selfCount} 接:${sel.receivedCount}) · 递烟:${sel.sharedCount}支 · 花费:${currency.symbol}${String.format(Locale.getDefault(), "%.2f", sel.selfCost + sel.sharedCost)}"
                     }
                 } else {
                     if (selectedChartType == ChartType.LINE) {
-                        "点击折线数据节点可对比【自购自抽+社交接烟】与【社交接烟】详情"
+                        if (lang == AppLanguage.EN)
+                            "Tap line node to compare Total vs Received details"
+                        else
+                            "点击折线数据节点可对比【自购自抽+社交接烟】与【社交接烟】详情"
                     } else {
                         AppStrings.get("chart_click_hint", lang)
                     }
@@ -1082,15 +1102,15 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (selectedChartType == ChartType.LINE) {
-                        LegendItem(color = MaterialTheme.colorScheme.primary, text = "自购自抽 + 社交接烟")
+                        LegendItem(color = MaterialTheme.colorScheme.primary, text = AppStrings.get("chart_legend_line_total", lang))
                         Spacer(modifier = Modifier.width(16.dp))
-                        LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
+                        LegendItem(color = Color(0xFF2E7D32), text = AppStrings.get("chart_legend_received", lang))
                     } else {
-                        LegendItem(color = MaterialTheme.colorScheme.primary, text = "自购自抽")
+                        LegendItem(color = MaterialTheme.colorScheme.primary, text = AppStrings.get("chart_legend_self", lang))
                         Spacer(modifier = Modifier.width(12.dp))
-                        LegendItem(color = Color(0xFF2E7D32), text = "社交接烟")
+                        LegendItem(color = Color(0xFF2E7D32), text = AppStrings.get("chart_legend_received", lang))
                         Spacer(modifier = Modifier.width(12.dp))
-                        LegendItem(color = MaterialTheme.colorScheme.secondary, text = "社交递烟")
+                        LegendItem(color = MaterialTheme.colorScheme.secondary, text = AppStrings.get("chart_legend_shared", lang))
                     }
                 }
 
@@ -1103,13 +1123,14 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         .height(240.dp)
                 ) {
                     if (trendData.isEmpty()) {
-                        Text("暂无当前时段的数据记录", modifier = Modifier.align(Alignment.Center), color = Color.Gray)
+                        Text(if (lang == AppLanguage.EN) "No data recorded for this period" else "暂无当前时段的数据记录", modifier = Modifier.align(Alignment.Center), color = Color.Gray)
                     } else {
                         TrendChartComposable(
                             trendData = trendData,
                             chartType = selectedChartType,
                             selectedIndex = selectedChartIndex,
-                            onSelectIndex = { selectedChartIndex = it }
+                            onSelectIndex = { selectedChartIndex = it },
+                            lang = lang
                         )
                     }
                 }
@@ -1152,15 +1173,15 @@ fun ChartsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column {
-                                        Text("自抽: ${item.selfCount} 支", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        Text("递烟: ${item.sharedCount} 支", fontSize = 11.sp, color = Color.Gray)
-                                        Text("接烟: ${item.receivedCount} 支", fontSize = 11.sp, color = Color.Gray)
-                                        Text("实际吸烟(自抽+接烟): ${item.selfCount + item.receivedCount} 支", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                        Text(if (lang == AppLanguage.EN) "Self: ${item.selfCount} sticks" else "自抽: ${item.selfCount} 支", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (lang == AppLanguage.EN) "Shared Out: ${item.sharedCount} sticks" else "递烟: ${item.sharedCount} 支", fontSize = 11.sp, color = Color.Gray)
+                                        Text(if (lang == AppLanguage.EN) "Received In: ${item.receivedCount} sticks" else "接烟: ${item.receivedCount} 支", fontSize = 11.sp, color = Color.Gray)
+                                        Text(if (lang == AppLanguage.EN) "Actual Smoked (Self+Rec): ${item.selfCount + item.receivedCount} sticks" else "实际吸烟(自抽+接烟): ${item.selfCount + item.receivedCount} 支", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
-                                        Text("平均间隔: ${if (item.avgIntervalMinutes > 0) "${item.avgIntervalMinutes}分钟" else "单次打卡"}", fontSize = 11.sp)
-                                        Text("高峰窗口: ${item.peakHourSlot}", fontSize = 11.sp)
-                                        Text("当日开销: ${currency.symbol}${String.format(Locale.getDefault(), "%.2f", item.selfCost + item.sharedCost)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                        Text(if (lang == AppLanguage.EN) "Avg Interval: ${if (item.avgIntervalMinutes > 0) "${item.avgIntervalMinutes} mins" else "Single log"}" else "平均间隔: ${if (item.avgIntervalMinutes > 0) "${item.avgIntervalMinutes}分钟" else "单次打卡"}", fontSize = 11.sp)
+                                        Text(if (lang == AppLanguage.EN) "Peak Window: ${item.peakHourSlot}" else "高峰窗口: ${item.peakHourSlot}", fontSize = 11.sp)
+                                        Text(if (lang == AppLanguage.EN) "Daily Spent: ${currency.symbol}${String.format(Locale.getDefault(), "%.2f", item.selfCost + item.sharedCost)}" else "当日开销: ${currency.symbol}${String.format(Locale.getDefault(), "%.2f", item.selfCost + item.sharedCost)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                                     }
                                 }
                             }
@@ -1240,7 +1261,8 @@ fun TrendChartComposable(
     trendData: List<TrendDataItem>,
     chartType: ChartType,
     selectedIndex: Int = -1,
-    onSelectIndex: (Int) -> Unit = {}
+    onSelectIndex: (Int) -> Unit = {},
+    lang: AppLanguage = AppLanguage.ZH
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val secondaryColor = MaterialTheme.colorScheme.secondary
@@ -1425,9 +1447,10 @@ fun TrendChartComposable(
                             isAntiAlias = true
                         }
 
-                        drawContext.canvas.nativeCanvas.drawText("${combinedCount}支", x, (yCombined - 10.dp.toPx()).coerceAtLeast(12.dp.toPx()), paintCombinedText)
+                        val unitStr = if (lang == AppLanguage.EN) "" else "支"
+                        drawContext.canvas.nativeCanvas.drawText("${combinedCount}$unitStr", x, (yCombined - 10.dp.toPx()).coerceAtLeast(12.dp.toPx()), paintCombinedText)
                         if (yRec != yCombined) {
-                            drawContext.canvas.nativeCanvas.drawText("${item.receivedCount}支", x, (yRec - 10.dp.toPx()).coerceAtLeast(12.dp.toPx()), paintRecText)
+                            drawContext.canvas.nativeCanvas.drawText("${item.receivedCount}$unitStr", x, (yRec - 10.dp.toPx()).coerceAtLeast(12.dp.toPx()), paintRecText)
                         }
                     }
                 }
@@ -1459,13 +1482,13 @@ fun TrendChartComposable(
             }
             ChartType.PIE -> {
                 val totalSelf = trendData.sumOf { it.selfCount }.toFloat()
-                val totalShared = trendData.sumOf { it.sharedCount }.toFloat()
                 val totalRec = trendData.sumOf { it.receivedCount }.toFloat()
+                val totalShared = trendData.sumOf { it.sharedCount }.toFloat()
                 val grandTotal = (totalSelf + totalShared + totalRec).coerceAtLeast(1f)
 
                 val sweepSelf = (totalSelf / grandTotal) * 360f
-                val sweepShared = (totalShared / grandTotal) * 360f
                 val sweepRec = (totalRec / grandTotal) * 360f
+                val sweepShared = (totalShared / grandTotal) * 360f
 
                 val diameter = minOf(usableWidth, usableHeight) * 0.75f
                 val topLeftX = leftPx + (usableWidth - diameter) / 2
@@ -1475,6 +1498,7 @@ fun TrendChartComposable(
                 val centerY = topLeftY + diameter / 2f
                 val radius = diameter / 2f
 
+                // Draw Arc 1: Self Smoked (Primary Color)
                 drawArc(
                     color = primaryColor,
                     startAngle = 0f,
@@ -1483,18 +1507,20 @@ fun TrendChartComposable(
                     topLeft = Offset(topLeftX, topLeftY),
                     size = Size(diameter, diameter)
                 )
+                // Draw Arc 2: Received In (Green Color)
                 drawArc(
-                    color = secondaryColor,
+                    color = greenColor,
                     startAngle = sweepSelf,
-                    sweepAngle = sweepShared,
+                    sweepAngle = sweepRec,
                     useCenter = true,
                     topLeft = Offset(topLeftX, topLeftY),
                     size = Size(diameter, diameter)
                 )
+                // Draw Arc 3: Shared Out (Secondary Color)
                 drawArc(
-                    color = greenColor,
-                    startAngle = sweepSelf + sweepShared,
-                    sweepAngle = sweepRec,
+                    color = secondaryColor,
+                    startAngle = sweepSelf + sweepRec,
+                    sweepAngle = sweepShared,
                     useCenter = true,
                     topLeft = Offset(topLeftX, topLeftY),
                     size = Size(diameter, diameter)
@@ -1511,12 +1537,12 @@ fun TrendChartComposable(
 
                 val slices = listOf(
                     Triple(totalSelf, 0f, sweepSelf),
-                    Triple(totalShared, sweepSelf, sweepShared),
-                    Triple(totalRec, sweepSelf + sweepShared, sweepRec)
+                    Triple(totalRec, sweepSelf, sweepRec),
+                    Triple(totalShared, sweepSelf + sweepRec, sweepShared)
                 )
 
                 slices.forEach { (count, startAngle, sweepAngle) ->
-                    if (sweepAngle > 12f) { // Render label for slices larger than ~3%
+                    if (sweepAngle > 10f && count > 0) { // Render label for slices with noticeable angle
                         val pct = (count / grandTotal) * 100f
                         val midAngleDeg = startAngle + sweepAngle / 2f
                         val midRad = Math.toRadians(midAngleDeg.toDouble())
@@ -1540,6 +1566,7 @@ fun TrendChartComposable(
 fun StoreScreen(viewModel: SmokingViewModel) {
     val cigarettes by viewModel.cigarettes.collectAsStateWithLifecycle()
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
+    val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
     var showAddCigaretteDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -1634,6 +1661,8 @@ fun StoreScreen(viewModel: SmokingViewModel) {
 
     if (showAddCigaretteDialog) {
         AddCigaretteDialog(
+            lang = lang,
+            currencySymbol = currency.symbol,
             onDismiss = { showAddCigaretteDialog = false },
             onConfirm = { name, price, packSize, priceType, cartonPrice, packsPerCarton ->
                 viewModel.addCigarette(name, price, packSize, priceType, cartonPrice, packsPerCarton)
@@ -1986,10 +2015,10 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
         )
 
         // Group 1: 外观与语言 (Language, Theme Appearance, Font Family, Currency)
-        WeChatSettingsGroup(title = "外观与语言") {
+        WeChatSettingsGroup(title = AppStrings.get("lang_theme_card_title", lang)) {
             // 1. Language Item
             WeChatSettingsItem(
-                title = "语言",
+                title = AppStrings.get("select_language", lang),
                 value = lang.displayName,
                 icon = Icons.Rounded.Translate,
                 iconBgColor = Color(0xFF1E88E5).copy(alpha = 0.15f),
@@ -2003,7 +2032,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             val themeLabel = if (lang == AppLanguage.EN) themeMode.labelEn else themeMode.labelZh
             val colorLabel = if (lang == AppLanguage.EN) colorPreset.labelEn else colorPreset.labelZh
             WeChatSettingsItem(
-                title = "主题外观",
+                title = AppStrings.get("select_theme_mode", lang),
                 value = "$themeLabel · $colorLabel",
                 icon = Icons.Rounded.Palette,
                 iconBgColor = Color(0xFF8E24AA).copy(alpha = 0.15f),
@@ -2015,7 +2044,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
 
             // 3. Font Family Item
             WeChatSettingsItem(
-                title = "字体样式",
+                title = if (lang == AppLanguage.EN) "Font Style" else "字体样式",
                 value = fontFamilyState.getLabel(lang),
                 icon = Icons.Rounded.FontDownload,
                 iconBgColor = Color(0xFFD81B60).copy(alpha = 0.15f),
@@ -2027,8 +2056,8 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
 
             // 4. Currency Item
             WeChatSettingsItem(
-                title = "货币",
-                subtitle = "货币代码与符号联动",
+                title = AppStrings.get("select_currency", lang),
+                subtitle = if (lang == AppLanguage.EN) "Link currency code & symbol" else "货币代码与符号联动",
                 value = currency.getOptionLabel(lang),
                 icon = Icons.Rounded.Payments,
                 iconBgColor = Color(0xFF43A047).copy(alpha = 0.15f),
@@ -2038,11 +2067,11 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
         }
 
         // Group 2: 控烟目标与算法设置 (Goals & Calculation Rules)
-        WeChatSettingsGroup(title = "控烟目标与算法") {
-            val dailyLimitStr = "${activeGoal?.dailyLimit ?: 10} 支/天"
+        WeChatSettingsGroup(title = AppStrings.get("goal_card_title", lang)) {
+            val dailyLimitStr = "${activeGoal?.dailyLimit ?: 10} ${if (lang == AppLanguage.EN) "sticks/day" else "支/天"}"
             WeChatSettingsItem(
-                title = "每日吸烟限制",
-                subtitle = "限制(自抽+接烟)的总和",
+                title = if (lang == AppLanguage.EN) "Daily Smoking Limit" else "每日吸烟限制",
+                subtitle = if (lang == AppLanguage.EN) "Limit total (Self + Received)" else "限制(自抽+接烟)的总和",
                 value = dailyLimitStr,
                 icon = Icons.Rounded.Flag,
                 iconBgColor = Color(0xFFE53935).copy(alpha = 0.15f),
@@ -2052,9 +2081,10 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
 
             HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-            val budgetStr = activeGoal?.monthlyBudget?.let { "${currency.symbol}$it" } ?: "未设置"
+            val notSetText = if (lang == AppLanguage.EN) "Not set" else "未设置"
+            val budgetStr = activeGoal?.monthlyBudget?.let { "${currency.symbol}$it" } ?: notSetText
             WeChatSettingsItem(
-                title = "每月烟草预算",
+                title = if (lang == AppLanguage.EN) "Monthly Budget" else "每月烟草预算",
                 value = budgetStr,
                 icon = Icons.Rounded.AccountBalanceWallet,
                 iconBgColor = Color(0xFFFB8C00).copy(alpha = 0.15f),
@@ -2066,9 +2096,9 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
 
             val quitDateStr = activeGoal?.targetQuitDate?.let {
                 SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it))
-            } ?: "未设置"
+            } ?: notSetText
             WeChatSettingsItem(
-                title = "完全戒烟目标日",
+                title = if (lang == AppLanguage.EN) "Target Quit Date" else "完全戒烟目标日",
                 value = quitDateStr,
                 icon = Icons.Rounded.CalendarMonth,
                 iconBgColor = Color(0xFF00ACC1).copy(alpha = 0.15f),
@@ -2079,9 +2109,9 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
             WeChatSettingsItem(
-                title = "平均间隔过滤阈值",
-                subtitle = "排除间隔>${maxIntervalHours}小时的数据",
-                value = "${maxIntervalHours} 小时",
+                title = if (lang == AppLanguage.EN) "Interval Filter Threshold" else "平均间隔过滤阈值",
+                subtitle = if (lang == AppLanguage.EN) "Exclude gaps > ${maxIntervalHours}h" else "排除间隔>${maxIntervalHours}小时的数据",
+                value = "${maxIntervalHours} ${if (lang == AppLanguage.EN) "hours" else "小时"}",
                 icon = Icons.Rounded.Timer,
                 iconBgColor = Color(0xFFD81B60).copy(alpha = 0.15f),
                 iconTintColor = Color(0xFFD81B60),
@@ -2090,10 +2120,10 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
         }
 
         // Group 3: 数据与云端备份 (Demo Mode & Cloud Sync)
-        WeChatSettingsGroup(title = "数据与同步") {
+        WeChatSettingsGroup(title = if (lang == AppLanguage.EN) "Data & Sync" else "数据与同步") {
             WeChatSettingsItem(
-                title = "Demo 模拟体验数据",
-                subtitle = "近60天模拟烟民真实行为数据",
+                title = AppStrings.get("demo_card_title", lang),
+                subtitle = if (lang == AppLanguage.EN) "60 days of realistic sample records" else "近60天模拟烟民真实行为数据",
                 icon = Icons.Rounded.BugReport,
                 iconBgColor = Color(0xFF3949AB).copy(alpha = 0.15f),
                 iconTintColor = Color(0xFF3949AB),
@@ -2109,8 +2139,8 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
             WeChatSettingsItem(
-                title = "云端备份与恢复",
-                value = if (syncState is SyncState.Success) "已同步" else "点击备份",
+                title = AppStrings.get("cloud_card_title", lang),
+                value = if (syncState is SyncState.Success) (if (lang == AppLanguage.EN) "Synced" else "已同步") else (if (lang == AppLanguage.EN) "Tap to Backup" else "点击备份"),
                 icon = Icons.Rounded.CloudSync,
                 iconBgColor = Color(0xFF00897B).copy(alpha = 0.15f),
                 iconTintColor = Color(0xFF00897B),
@@ -2119,10 +2149,10 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
         }
 
         // Group 4: 关于 (About)
-        WeChatSettingsGroup(title = "关于软件") {
+        WeChatSettingsGroup(title = if (lang == AppLanguage.EN) "About App" else "关于软件") {
             WeChatSettingsItem(
-                title = "刷新 AI 戒烟教练建议",
-                value = "点击刷新",
+                title = if (lang == AppLanguage.EN) "Refresh AI Coach Advice" else "刷新 AI 戒烟教练建议",
+                value = if (lang == AppLanguage.EN) "Tap to Refresh" else "点击刷新",
                 icon = Icons.Rounded.AutoAwesome,
                 iconBgColor = Color(0xFF7E57C2).copy(alpha = 0.15f),
                 iconTintColor = Color(0xFF7E57C2),
@@ -2132,8 +2162,8 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
             WeChatSettingsItem(
-                title = "关于 控烟Guard",
-                subtitle = "开发者: Nonion · nonion.pl@gmail.com",
+                title = AppStrings.get("about_title", lang),
+                subtitle = AppStrings.get("about_subtitle", lang),
                 value = "v2.0",
                 icon = Icons.Rounded.Info,
                 iconBgColor = Color(0xFF757575).copy(alpha = 0.15f),
@@ -2151,13 +2181,13 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("关于软件 (About)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(AppStrings.get("about_dialog_title", lang), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "控烟Guard 是一款专注于智能记录吸烟行为、分析社交社交社交关系与烟草开销、并提供量身打卡与控烟方案的全功能助手。",
+                        text = AppStrings.get("about_desc", lang),
                         fontSize = 12.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2166,28 +2196,28 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("软件版本", fontSize = 13.sp, color = Color.Gray)
+                        Text(AppStrings.get("software_version", lang), fontSize = 13.sp, color = Color.Gray)
                         Text("v2.0 (Build 2026.07)", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("开发者", fontSize = 13.sp, color = Color.Gray)
+                        Text(AppStrings.get("developer", lang), fontSize = 13.sp, color = Color.Gray)
                         Text("Nonion", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("联系邮箱", fontSize = 13.sp, color = Color.Gray)
+                        Text(AppStrings.get("contact_email", lang), fontSize = 13.sp, color = Color.Gray)
                         Text("nonion.pl@gmail.com", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showAboutDialog = false }) {
-                    Text("确定")
+                    Text(AppStrings.get("confirm", lang))
                 }
             }
         )
@@ -2199,7 +2229,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Translate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("语言选择", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(AppStrings.get("select_language", lang), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
@@ -2232,7 +2262,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showLanguageDialog = false }) { Text("取消") }
+                TextButton(onClick = { showLanguageDialog = false }) { Text(AppStrings.get("cancel", lang)) }
             }
         )
     }
@@ -2244,13 +2274,13 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("主题外观设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(if (lang == AppLanguage.EN) "Theme Appearance Settings" else "主题外观设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     // Theme Mode
-                    Text("主题模式", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(if (lang == AppLanguage.EN) "Theme Mode" else "主题模式", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2269,7 +2299,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     HorizontalDivider()
 
                     // Color Preset
-                    Text("配色方案", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(if (lang == AppLanguage.EN) "Color Palette" else "配色方案", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         AppColorPreset.values().forEach { preset ->
                             val label = if (lang == AppLanguage.EN) preset.labelEn else preset.labelZh
@@ -2303,7 +2333,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 }
             },
             confirmButton = {
-                Button(onClick = { showThemeDialog = false }) { Text("完成") }
+                Button(onClick = { showThemeDialog = false }) { Text(if (lang == AppLanguage.EN) "Done" else "完成") }
             }
         )
     }
@@ -2315,7 +2345,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.FontDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("字体样式设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(if (lang == AppLanguage.EN) "Font Style Settings" else "字体样式设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
@@ -2343,7 +2373,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                         fontSize = 14.sp
                                     )
                                     Text(
-                                        text = "预览文字: Guard控烟助手 12345",
+                                        text = if (lang == AppLanguage.EN) "Preview: Smoke Tracker Guard 12345" else "预览文字: Guard控烟助手 12345",
                                         fontFamily = fontItem.fontFamily,
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2358,7 +2388,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showFontDialog = false }) { Text("取消") }
+                TextButton(onClick = { showFontDialog = false }) { Text(AppStrings.get("cancel", lang)) }
             }
         )
     }
@@ -2370,13 +2400,13 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Payments, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("货币设置 (Currency)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(if (lang == AppLanguage.EN) "Currency Settings" else "货币设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "请选择用于界面全域价格与开销统计的货币：",
+                        text = if (lang == AppLanguage.EN) "Select currency used for prices and expense analytics:" else "请选择用于界面全域价格与开销统计的货币：",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2412,7 +2442,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showCurrencyDialog = false }) { Text("取消") }
+                TextButton(onClick = { showCurrencyDialog = false }) { Text(AppStrings.get("cancel", lang)) }
             }
         )
     }
@@ -2428,13 +2458,13 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Flag, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("控烟与预算目标", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(if (lang == AppLanguage.EN) "Smoking & Budget Goals" else "控烟与预算目标", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "提示：每日吸烟限制量针对的是每天的【自购自抽 + 社交接烟】总和支数！",
+                        text = if (lang == AppLanguage.EN) "Note: Daily limit applies to total [Self Smoked + Received In] per day!" else "提示：每日吸烟限制量针对的是每天的【自购自抽 + 社交接烟】总和支数！",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium
@@ -2443,7 +2473,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     OutlinedTextField(
                         value = limitInput,
                         onValueChange = { limitInput = it },
-                        label = { Text("每日吸烟限制 (自抽+接烟, 支/天)") },
+                        label = { Text(AppStrings.get("daily_limit_label", lang)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -2451,14 +2481,14 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                     OutlinedTextField(
                         value = budgetInput,
                         onValueChange = { budgetInput = it },
-                        label = { Text("每月烟草预算金额 (${currency.symbol})") },
+                        label = { Text(AppStrings.get("monthly_budget_label", lang, currency.symbol)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
 
                     val dateLabel = quitDateTs?.let {
                         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it))
-                    } ?: "点击选择完全戒烟目标日"
+                    } ?: (if (lang == AppLanguage.EN) "Tap to select target quit date" else "点击选择完全戒烟目标日")
 
                     OutlinedButton(
                         onClick = {
@@ -2495,11 +2525,11 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         showGoalDialog = false
                     }
                 ) {
-                    Text("保存")
+                    Text(if (lang == AppLanguage.EN) "Save" else "保存")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showGoalDialog = false }) { Text("取消") }
+                TextButton(onClick = { showGoalDialog = false }) { Text(AppStrings.get("cancel", lang)) }
             }
         )
     }
@@ -2511,19 +2541,19 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("平均间隔过滤阀值设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(if (lang == AppLanguage.EN) "Interval Threshold Settings" else "平均间隔过滤阈值设置", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "计算平均吸烟间隔时间时，将自动排除两次吸烟间隔大于 X 小时的数据（通常为睡眠或长时间禁烟期）。",
+                        text = AppStrings.get("interval_threshold_desc", lang),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 16.sp
                     )
 
-                    Text("选择阀值 X（默认 6 小时）:", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(if (lang == AppLanguage.EN) "Select threshold X (Default 6 hours):" else "选择阈值 X（默认 6 小时）:", fontSize = 13.sp, fontWeight = FontWeight.Bold)
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2533,7 +2563,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                             FilterChip(
                                 selected = maxIntervalHours == hours,
                                 onClick = { viewModel.setMaxIntervalThresholdHours(hours) },
-                                label = { Text("${hours}小时", fontSize = 11.sp) },
+                                label = { Text("${hours}${if (lang == AppLanguage.EN) "h" else "小时"}", fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -2550,14 +2580,14 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                 }
                             }
                         },
-                        label = { Text("自定义阀值 (1-24小时)") },
+                        label = { Text(if (lang == AppLanguage.EN) "Custom threshold (1-24 hours)" else "自定义阈值 (1-24小时)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
             },
             confirmButton = {
-                Button(onClick = { showIntervalDialog = false }) { Text("确定") }
+                Button(onClick = { showIntervalDialog = false }) { Text(AppStrings.get("confirm", lang)) }
             }
         )
     }
@@ -2569,7 +2599,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("云端数据备份与恢复", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(if (lang == AppLanguage.EN) "Cloud Backup & Restore" else "云端数据备份与恢复", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
@@ -2593,7 +2623,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         ) {
                             Icon(imageVector = Icons.Rounded.Backup, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("立即备份", fontSize = 13.sp)
+                            Text(AppStrings.get("upload_backup", lang), fontSize = 13.sp)
                         }
 
                         OutlinedButton(
@@ -2605,13 +2635,13 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         ) {
                             Icon(imageVector = Icons.Rounded.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("下载还原", fontSize = 13.sp)
+                            Text(AppStrings.get("download_backup", lang), fontSize = 13.sp)
                         }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showCloudSyncDialog = false }) { Text("关闭") }
+                TextButton(onClick = { showCloudSyncDialog = false }) { Text(if (lang == AppLanguage.EN) "Close" else "关闭") }
             }
         )
     }
@@ -2779,6 +2809,7 @@ fun ExpandableSettingsCard(
 @Composable
 fun AddLogDialog(
     cigarettes: List<Cigarette>,
+    lang: AppLanguage = AppLanguage.ZH,
     onDismiss: () -> Unit,
     onConfirm: (cigaretteId: Int, quantity: Int, logType: String, note: String) -> Unit
 ) {
@@ -2802,31 +2833,31 @@ fun AddLogDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "记录一次吸烟打卡",
+                    text = AppStrings.get("add_log_title", lang),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
 
                 if (cigarettes.isEmpty()) {
                     Text(
-                        "提示：请先去【烟盒】栏添加常用的香烟种类与价格。",
+                        text = if (lang == AppLanguage.EN) "Notice: Please add cigarette brands in [Box] tab first." else "提示：请先去【烟盒】栏添加常用的香烟种类与价格。",
                         color = Color.Red,
                         fontSize = 13.sp
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                        Text("知道了")
+                        Text(if (lang == AppLanguage.EN) "Got it" else "知道了")
                     }
                 } else {
                     // Cigarette Dropdown
-                    Text("选择香烟品牌:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(if (lang == AppLanguage.EN) "Select Brand:" else "选择香烟品牌:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
                             onClick = { dropdownExpanded = true },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = selectedCigarette?.name ?: "选择香烟种类",
+                                text = selectedCigarette?.name ?: AppStrings.get("select_cigarette", lang),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -2855,7 +2886,7 @@ fun AddLogDialog(
                     }
 
                     // Scene Selection Tabs (Requirement 1)
-                    Text("选择打卡场景:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(if (lang == AppLanguage.EN) "Select Log Scene:" else "选择打卡场景:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -2864,27 +2895,27 @@ fun AddLogDialog(
                             FilterChip(
                                 selected = selectedLogType == "SELF",
                                 onClick = { selectedLogType = "SELF" },
-                                label = { Text("🚬 自购自抽", fontSize = 11.sp) },
+                                label = { Text(if (lang == AppLanguage.EN) "🚬 Self Purchase" else "🚬 自购自抽", fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = selectedLogType == "SHARED_OUT",
                                 onClick = { selectedLogType = "SHARED_OUT" },
-                                label = { Text("🤝 社交递烟", fontSize = 11.sp) },
+                                label = { Text(if (lang == AppLanguage.EN) "🤝 Shared Out" else "🤝 社交递烟", fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = selectedLogType == "RECEIVED_IN",
                                 onClick = { selectedLogType = "RECEIVED_IN" },
-                                label = { Text("🎁 社交接烟", fontSize = 11.sp) },
+                                label = { Text(if (lang == AppLanguage.EN) "🎁 Received In" else "🎁 社交接烟", fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
 
                         val explanationText = when (selectedLogType) {
-                            "SELF" -> "自己购买的香烟自己抽：计入个人健康抽烟量，并计入财务开销。"
-                            "SHARED_OUT" -> "掏自己的烟递给朋友/同事：不计入个人健康超标量，但计入开销。"
-                            "RECEIVED_IN" -> "接别人递过来的烟抽（他人买单）：计入个人健康抽烟量，但不花自己钱（免费）。"
+                            "SELF" -> if (lang == AppLanguage.EN) "Self purchased cigarette: Counted towards health volume and personal expense." else "自己购买的香烟自己抽：计入个人健康抽烟量，并计入财务开销。"
+                            "SHARED_OUT" -> if (lang == AppLanguage.EN) "Shared your cigarette to others: Not counted in your smoking intake, but counted in expense." else "掏自己的烟递给朋友/同事：不计入个人健康超标量，但计入开销。"
+                            "RECEIVED_IN" -> if (lang == AppLanguage.EN) "Accepted cigarette from others: Counted towards your smoking intake, but free." else "接别人递过来的烟抽（他人买单）：计入个人健康抽烟量，但不花自己钱（免费）。"
                             else -> ""
                         }
                         Surface(
@@ -2904,7 +2935,7 @@ fun AddLogDialog(
                     OutlinedTextField(
                         value = quantity,
                         onValueChange = { quantity = it },
-                        label = { Text("记录数量 (支)") },
+                        label = { Text(AppStrings.get("log_quantity", lang)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -2913,7 +2944,7 @@ fun AddLogDialog(
                     OutlinedTextField(
                         value = note,
                         onValueChange = { note = it },
-                        label = { Text("备注标签 (例如: 饭后, 社交聚会等)") },
+                        label = { Text(AppStrings.get("log_note", lang)) },
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -2925,7 +2956,7 @@ fun AddLogDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TextButton(onClick = onDismiss) {
-                            Text("取消")
+                            Text(AppStrings.get("cancel", lang))
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
@@ -2935,7 +2966,7 @@ fun AddLogDialog(
                                 onConfirm(cigId, qty, selectedLogType, note)
                             }
                         ) {
-                            Text("确认打卡", fontWeight = FontWeight.Bold)
+                            Text(if (lang == AppLanguage.EN) "Confirm Log" else "确认打卡", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -2947,6 +2978,8 @@ fun AddLogDialog(
 // Dialog: Add Cigarette Dialog with Single Pack vs Single Carton options
 @Composable
 fun AddCigaretteDialog(
+    lang: AppLanguage = AppLanguage.ZH,
+    currencySymbol: String = "¥",
     onDismiss: () -> Unit,
     onConfirm: (name: String, price: Double, packSize: Int, priceType: String, cartonPrice: Double, packsPerCarton: Int) -> Unit
 ) {
@@ -2970,7 +3003,7 @@ fun AddCigaretteDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "添加新烟草品牌与规则",
+                    text = AppStrings.get("add_cigarette_title", lang),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -2978,11 +3011,11 @@ fun AddCigaretteDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("香烟名称/品牌 (如: 中华, 炫赫门)") },
+                    label = { Text(if (lang == AppLanguage.EN) "Brand Name (e.g. Marlboro, Chunghwa)" else "香烟名称/品牌 (如: 中华, 炫赫门)") },
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Text("选择计价类型规则:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text(if (lang == AppLanguage.EN) "Pricing Rule Mode:" else "选择计价类型规则:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2990,13 +3023,13 @@ fun AddCigaretteDialog(
                     FilterChip(
                         selected = priceType == "PACK",
                         onClick = { priceType = "PACK" },
-                        label = { Text("📦 单包零售价规则", fontSize = 12.sp) },
+                        label = { Text(if (lang == AppLanguage.EN) "📦 Per Pack Rule" else "📦 单包零售价规则", fontSize = 12.sp) },
                         modifier = Modifier.weight(1f)
                     )
                     FilterChip(
                         selected = priceType == "CARTON",
                         onClick = { priceType = "CARTON" },
-                        label = { Text("🧱 单条零售价规则", fontSize = 12.sp) },
+                        label = { Text(if (lang == AppLanguage.EN) "🧱 Per Carton Rule" else "🧱 单条零售价规则", fontSize = 12.sp) },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -3005,7 +3038,7 @@ fun AddCigaretteDialog(
                     OutlinedTextField(
                         value = priceInput,
                         onValueChange = { priceInput = it },
-                        label = { Text("单包零售价格 (元)") },
+                        label = { Text(if (lang == AppLanguage.EN) "Pack Price ($currencySymbol)" else "单包零售价格 (元)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -3013,7 +3046,7 @@ fun AddCigaretteDialog(
                     OutlinedTextField(
                         value = priceInput,
                         onValueChange = { priceInput = it },
-                        label = { Text("单条(整条10包)零售价格 (元)") },
+                        label = { Text(if (lang == AppLanguage.EN) "Carton (10 Packs) Price ($currencySymbol)" else "单条(整条10包)零售价格 (元)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -3026,14 +3059,14 @@ fun AddCigaretteDialog(
                     OutlinedTextField(
                         value = packSizeInput,
                         onValueChange = { packSizeInput = it },
-                        label = { Text("每包支数 (默认20)") },
+                        label = { Text(if (lang == AppLanguage.EN) "Sticks/Pack (Default 20)" else "每包支数 (默认20)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
                         value = packsPerCartonInput,
                         onValueChange = { packsPerCartonInput = it },
-                        label = { Text("每条包数 (默认10)") },
+                        label = { Text(if (lang == AppLanguage.EN) "Packs/Carton (Default 10)" else "每条包数 (默认10)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -3054,13 +3087,16 @@ fun AddCigaretteDialog(
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
                         Text(
-                            text = "💡 价格自动折算预览:",
+                            text = if (lang == AppLanguage.EN) "💡 Live Price Breakdown:" else "💡 价格自动折算预览:",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "折合单包: ¥${String.format(Locale.getDefault(), "%.2f", packPrice)} | 折合单条: ¥${String.format(Locale.getDefault(), "%.2f", cartonPrice)} | 单支成本: ¥${String.format(Locale.getDefault(), "%.2f", unitPrice)}",
+                            text = if (lang == AppLanguage.EN)
+                                "Per Pack: $currencySymbol${String.format(Locale.getDefault(), "%.2f", packPrice)} | Per Carton: $currencySymbol${String.format(Locale.getDefault(), "%.2f", cartonPrice)} | Per Stick: $currencySymbol${String.format(Locale.getDefault(), "%.2f", unitPrice)}"
+                            else
+                                "折合单包: $currencySymbol${String.format(Locale.getDefault(), "%.2f", packPrice)} | 折合单条: $currencySymbol${String.format(Locale.getDefault(), "%.2f", cartonPrice)} | 单支成本: $currencySymbol${String.format(Locale.getDefault(), "%.2f", unitPrice)}",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -3075,7 +3111,7 @@ fun AddCigaretteDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("取消")
+                        Text(AppStrings.get("cancel", lang))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -3085,7 +3121,7 @@ fun AddCigaretteDialog(
                             }
                         }
                     ) {
-                        Text("保存烟草", fontWeight = FontWeight.Bold)
+                        Text(if (lang == AppLanguage.EN) "Save Brand" else "保存烟草", fontWeight = FontWeight.Bold)
                     }
                 }
             }
