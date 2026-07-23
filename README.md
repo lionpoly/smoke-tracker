@@ -42,9 +42,9 @@
 ### 1. 🚬 3-Scenario Social Logging
 Standard smoking trackers treat all cigarettes the same. **Smoking Tracker** accurately categorizes smoking events based on real-world social context:
 
-- **🚬 Self Purchase (自购自抽)**: Cigarettes you bought and smoked yourself. Counted towards **both** personal health smoking volume and personal financial expenses.
-- **🤝 Social Shared Out (社交递烟)**: Handing your own cigarette to a friend or colleague. Counted as a **financial expense**, but **not** added to your personal health smoking intake.
-- **🎁 Social Received In (社交接烟)**: Accepting a cigarette offered by someone else. Counted towards your **personal health smoking volume**, but recorded at **$0 cost** (free / gifted).
+- **Self Purchase (自购自抽)**: Cigarettes you bought and smoked yourself. Counted towards **both** personal health smoking volume and personal financial expenses.
+- **Social Shared Out (社交递烟)**: Handing your own cigarette to a friend or colleague. Counted as a **financial expense**, but **not** added to your personal health smoking intake.
+- **Social Received In (社交接烟)**: Accepting a cigarette offered by someone else. Counted towards your **personal health smoking volume**, but recorded at **$0 cost** (free / gifted).
 
 ### 2. 📊 Smart Trends & Interactive Charts
 - **Time Range Selector**: View analytics for **Last 7 Days**, **This Week**, **This Month**, **Specific Month**, **Specific Year**, or a **Custom Date Range**.

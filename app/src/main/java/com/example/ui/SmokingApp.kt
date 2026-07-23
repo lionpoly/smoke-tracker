@@ -2057,7 +2057,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             // 4. Currency Item
             WeChatSettingsItem(
                 title = AppStrings.get("select_currency", lang),
-                subtitle = if (lang == AppLanguage.EN) "Link currency code & symbol" else "货币代码与符号联动",
+                subtitle = if (lang == AppLanguage.EN) "Link code & symbol" else "货币代码与符号联动",
                 value = currency.getOptionLabel(lang),
                 icon = Icons.Rounded.Payments,
                 iconBgColor = Color(0xFF43A047).copy(alpha = 0.15f),
@@ -2071,7 +2071,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             val dailyLimitStr = "${activeGoal?.dailyLimit ?: 10} ${if (lang == AppLanguage.EN) "sticks/day" else "支/天"}"
             WeChatSettingsItem(
                 title = if (lang == AppLanguage.EN) "Daily Smoking Limit" else "每日吸烟限制",
-                subtitle = if (lang == AppLanguage.EN) "Limit total (Self + Received)" else "限制(自抽+接烟)的总和",
+                subtitle = if (lang == AppLanguage.EN) "Limit total" else "限制(自抽+接烟)的总和",
                 value = dailyLimitStr,
                 icon = Icons.Rounded.Flag,
                 iconBgColor = Color(0xFFE53935).copy(alpha = 0.15f),
@@ -2559,7 +2559,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf(4, 6, 8, 12, 24).forEach { hours ->
+                        listOf(4, 6, 8, 12).forEach { hours ->
                             FilterChip(
                                 selected = maxIntervalHours == hours,
                                 onClick = { viewModel.setMaxIntervalThresholdHours(hours) },
@@ -2895,19 +2895,19 @@ fun AddLogDialog(
                             FilterChip(
                                 selected = selectedLogType == "SELF",
                                 onClick = { selectedLogType = "SELF" },
-                                label = { Text(if (lang == AppLanguage.EN) "🚬 Self Purchase" else "🚬 自购自抽", fontSize = 11.sp) },
+                                label = { Text(if (lang == AppLanguage.EN) "Self Purchase" else "自购自抽", fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = selectedLogType == "SHARED_OUT",
                                 onClick = { selectedLogType = "SHARED_OUT" },
-                                label = { Text(if (lang == AppLanguage.EN) "🤝 Shared Out" else "🤝 社交递烟", fontSize = 11.sp) },
+                                label = { Text(if (lang == AppLanguage.EN) "Shared Out" else "社交递烟", fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = selectedLogType == "RECEIVED_IN",
                                 onClick = { selectedLogType = "RECEIVED_IN" },
-                                label = { Text(if (lang == AppLanguage.EN) "🎁 Received In" else "🎁 社交接烟", fontSize = 11.sp) },
+                                label = { Text(if (lang == AppLanguage.EN) "Received In" else "社交接烟", fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }

@@ -8,9 +8,9 @@ enum class AppLanguage(val code: String, val displayName: String) {
 }
 
 enum class AppThemeMode(val code: String, val labelZh: String, val labelEn: String) {
-    SYSTEM("system", "跟随系统", "System Default"),
-    LIGHT("light", "浅色模式", "Light Mode"),
-    DARK("dark", "深色模式", "Dark Mode")
+    SYSTEM("system", "跟随系统", "System"),
+    LIGHT("light", "浅色模式", "Light"),
+    DARK("dark", "深色模式", "Dark")
 }
 
 enum class AppColorPreset(val code: String, val labelZh: String, val labelEn: String, val primary: Color) {
@@ -222,9 +222,9 @@ object AppStrings {
         "saved_subtitle" to "Saved by free sticks",
 
         "quick_record_title" to "Quick Log Actions",
-        "quick_self_btn" to "🚬 Self Smoked +1",
-        "quick_shared_btn" to "🤝 Shared Out +1",
-        "quick_received_btn" to "🎁 Received In +1",
+        "quick_self_btn" to "Self Smoked +1",
+        "quick_shared_btn" to "Shared Out +1",
+        "quick_received_btn" to "Received In +1",
         "custom_record_btn" to "Custom Log / Add Notes",
 
         "ai_advice_title" to "AI Coach Insights & Advice",

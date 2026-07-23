@@ -55,13 +55,13 @@ enum class AppCurrency(
     val nameZh: String,
     val nameEn: String
 ) {
-    CNY("CNY", "¥", "🇨🇳", "人民币", "Chinese Yuan"),
+    CNY("CNY", "¥", "🇨🇳", "人民币", "CN Yuan"),
     USD("USD", "$", "🇺🇸", "美元", "US Dollar"),
     EUR("EUR", "€", "🇪🇺", "欧元", "Euro"),
-    JPY("JPY", "¥", "🇯🇵", "日元", "Japanese Yen"),
-    GBP("GBP", "£", "🇬🇧", "英镑", "British Pound"),
-    HKD("HKD", "HK$", "🇭🇰", "港币", "Hong Kong Dollar"),
-    TWD("TWD", "NT$", "🇹🇼", "新台币", "New Taiwan Dollar");
+    JPY("JPY", "¥", "🇯🇵", "日元", "JP Yen"),
+    GBP("GBP", "£", "🇬🇧", "英镑", "UK Pound"),
+    HKD("HKD", "HK$", "🇭🇰", "港币", "HK Dollar"),
+    TWD("TWD", "NT$", "🇹🇼", "新台币", "TW Dollar");
 
     fun getOptionLabel(lang: AppLanguage = AppLanguage.ZH): String {
         val name = if (lang == AppLanguage.EN) nameEn else nameZh
