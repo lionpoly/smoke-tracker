@@ -209,7 +209,8 @@ class SmokingViewModel(
         selectedMonthYear,
         customStartDate,
         customEndDate,
-        maxIntervalThresholdHours
+        maxIntervalThresholdHours,
+        cigarettes
     ) { flows: Array<Any?> ->
         @Suppress("UNCHECKED_CAST")
         calculateTrendData(
@@ -218,7 +219,8 @@ class SmokingViewModel(
             cal = flows[2] as Calendar,
             startMs = flows[3] as? Long,
             endMs = flows[4] as? Long,
-            maxIntervalHours = flows[5] as Int
+            maxIntervalHours = flows[5] as Int,
+            cigList = flows[6] as List<Cigarette>
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -303,11 +305,26 @@ class SmokingViewModel(
         cal: Calendar,
         startMs: Long?,
         endMs: Long?,
-        maxIntervalHours: Int = 6
+        maxIntervalHours: Int = 6,
+        cigList: List<Cigarette> = emptyList()
     ): List<TrendDataItem> {
         val trend = ArrayList<TrendDataItem>()
         val sdfDay = SimpleDateFormat("MM/dd", Locale.getDefault())
         val sdfMonth = SimpleDateFormat("yyyy/MM", Locale.getDefault())
+
+        val cigUnitPriceMap = cigList.associate { cig ->
+            cig.id to (cig.price / cig.packSize.coerceAtLeast(1))
+        }
+        val defaultUnitPrice = cigList.firstOrNull { it.isActive }?.let { it.price / it.packSize.coerceAtLeast(1) }
+            ?: cigList.firstOrNull()?.let { it.price / it.packSize.coerceAtLeast(1) }
+            ?: 1.25
+
+        fun computeReceivedSaved(subLogs: List<SmokingLog>): Double {
+            return subLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { log ->
+                val unitPrice = cigUnitPriceMap[log.cigaretteId] ?: defaultUnitPrice
+                log.quantity * unitPrice
+            }
+        }
 
         val lang = appLanguage.value
         when (timeRange) {
@@ -329,7 +346,7 @@ class SmokingViewModel(
                     val receivedCount = dayLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
-                    val receivedSaved = receivedCount * 1.25
+                    val receivedSaved = computeReceivedSaved(dayLogs)
                     val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours, lang)
 
                     trend.add(
@@ -373,7 +390,7 @@ class SmokingViewModel(
                     val receivedCount = dayLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
-                    val receivedSaved = receivedCount * 1.25
+                    val receivedSaved = computeReceivedSaved(dayLogs)
                     val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours, lang)
 
                     trend.add(
@@ -414,7 +431,7 @@ class SmokingViewModel(
                     val receivedCount = dayLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
-                    val receivedSaved = receivedCount * 1.25
+                    val receivedSaved = computeReceivedSaved(dayLogs)
                     val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours, lang)
 
                     trend.add(
@@ -462,7 +479,7 @@ class SmokingViewModel(
                     val receivedCount = monthLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
                     val selfCost = monthLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = monthLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
-                    val receivedSaved = receivedCount * 1.25
+                    val receivedSaved = computeReceivedSaved(monthLogs)
                     val (avgMin, peakSlot) = computeIntervalAndPeak(monthLogs, maxIntervalHours, lang)
 
                     trend.add(
@@ -496,7 +513,7 @@ class SmokingViewModel(
                     val receivedCount = dayLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity }
                     val selfCost = dayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
                     val sharedCost = dayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
-                    val receivedSaved = receivedCount * 1.25
+                    val receivedSaved = computeReceivedSaved(dayLogs)
                     val (avgMin, peakSlot) = computeIntervalAndPeak(dayLogs, maxIntervalHours, lang)
 
                     trend.add(
@@ -550,9 +567,20 @@ class SmokingViewModel(
         val todayTotal = todaySelf + todayReceived // Personal consumption
         val todayCost = todayLogs.filter { getLogType(it) != "RECEIVED_IN" }.sumOf { it.cost }
 
+        val cigUnitPriceMap = cigList.associate { cig ->
+            cig.id to (cig.price / cig.packSize.coerceAtLeast(1))
+        }
         val activeCig = cigList.firstOrNull { it.isActive } ?: cigList.firstOrNull()
-        val unitPrice = activeCig?.let { it.price / it.packSize.coerceAtLeast(1) } ?: 1.25
-        val todaySavedFromReceived = todayReceived * unitPrice
+        val defaultUnitPrice = activeCig?.let { it.price / it.packSize.coerceAtLeast(1) } ?: 1.25
+
+        fun computeReceivedSaved(subLogs: List<SmokingLog>): Double {
+            return subLogs.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { log ->
+                val unitPrice = cigUnitPriceMap[log.cigaretteId] ?: defaultUnitPrice
+                log.quantity * unitPrice
+            }
+        }
+
+        val todaySavedFromReceived = computeReceivedSaved(todayLogs)
 
         val weekTotal = weekLogs.sumOf { it.quantity }
         val weekCost = weekLogs.filter { getLogType(it) != "RECEIVED_IN" }.sumOf { it.cost }
@@ -562,14 +590,14 @@ class SmokingViewModel(
 
         val totalSelfCost = logList.filter { getLogType(it) == "SELF" }.sumOf { it.cost }
         val totalSharedCost = logList.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.cost }
-        val totalReceivedSaved = logList.filter { getLogType(it) == "RECEIVED_IN" }.sumOf { it.quantity } * unitPrice
+        val totalReceivedSaved = computeReceivedSaved(logList)
         val totalSpent = totalSelfCost + totalSharedCost
 
         val dailyLimit = goal?.dailyLimit ?: 10
         val isOverLimit = (todaySelf + todayReceived) > dailyLimit
 
         val todaySavedCount = (dailyLimit - (todaySelf + todayReceived)).coerceAtLeast(0)
-        val todaySavedMoney = todaySavedCount * unitPrice + todaySavedFromReceived
+        val todaySavedMoney = todaySavedCount * defaultUnitPrice + todaySavedFromReceived
 
         return SmokingStats(
             todaySelfCount = todaySelf,
