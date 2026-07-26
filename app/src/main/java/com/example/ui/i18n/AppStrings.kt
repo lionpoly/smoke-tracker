@@ -191,7 +191,13 @@ object AppStrings {
         "pack_price" to "单包售价 (元)",
         "carton_price" to "单条售价 (元)",
         "pack_size" to "每包支数 (默认20)",
-        "packs_per_carton" to "每条包数 (默认10)"
+        "packs_per_carton" to "每条包数 (默认10)",
+        "sort_title" to "排序方式",
+        "sort_default" to "默认",
+        "sort_name_asc" to "名称 A-Z",
+        "sort_name_desc" to "名称 Z-A",
+        "sort_price_asc" to "价格 ⬆",
+        "sort_price_desc" to "价格 ⬇"
     )
 
     private val enMap = mapOf(
@@ -354,6 +360,12 @@ object AppStrings {
         "pack_price" to "Pack Price (¥)",
         "carton_price" to "Carton Price (¥)",
         "pack_size" to "Sticks per Pack (default 20)",
-        "packs_per_carton" to "Packs per Carton (default 10)"
+        "packs_per_carton" to "Packs per Carton (default 10)",
+        "sort_title" to "Sort By",
+        "sort_default" to "Default",
+        "sort_name_asc" to "Name A-Z",
+        "sort_name_desc" to "Name Z-A",
+        "sort_price_asc" to "Price ⬆",
+        "sort_price_desc" to "Price ⬇"
     )
 }

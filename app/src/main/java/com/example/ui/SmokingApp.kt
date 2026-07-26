@@ -19,6 +19,7 @@ import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -1565,16 +1566,27 @@ fun TrendChartComposable(
 @Composable
 fun StoreScreen(viewModel: SmokingViewModel) {
     val cigarettes by viewModel.cigarettes.collectAsStateWithLifecycle()
+    val sortOption by viewModel.cigaretteSortOption.collectAsStateWithLifecycle()
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
     val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
     var showAddCigaretteDialog by remember { mutableStateOf(false) }
+
+    val sortedCigarettes = remember(cigarettes, sortOption) {
+        when (sortOption) {
+            CigaretteSortOption.DEFAULT -> cigarettes
+            CigaretteSortOption.NAME_ASC -> cigarettes.sortedBy { it.name }
+            CigaretteSortOption.NAME_DESC -> cigarettes.sortedByDescending { it.name }
+            CigaretteSortOption.PRICE_ASC -> cigarettes.sortedBy { it.price }
+            CigaretteSortOption.PRICE_DESC -> cigarettes.sortedByDescending { it.price }
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Header Row
         Row(
@@ -1632,6 +1644,52 @@ fun StoreScreen(viewModel: SmokingViewModel) {
             }
         }
 
+        // Sort Controls Bar
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Sort,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = AppStrings.get("sort_title", lang) + ":",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items(CigaretteSortOption.values()) { option ->
+                    val isSelected = (sortOption == option)
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { viewModel.setCigaretteSortOption(option) },
+                        label = {
+                            Text(
+                                text = AppStrings.get(option.labelKey, lang),
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                }
+            }
+        }
+
         if (cigarettes.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -1639,14 +1697,23 @@ fun StoreScreen(viewModel: SmokingViewModel) {
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = AppStrings.get("empty_box", lang), color = Color.Gray)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = AppStrings.get("empty_box", lang), color = Color.Gray)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.seedDefaultCigarettes() },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(if (lang == AppLanguage.EN) "Load Default Brands" else "加载默认香烟品牌")
+                    }
+                }
             }
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(cigarettes, key = { it.id }) { cig ->
+                items(sortedCigarettes, key = { it.id }) { cig ->
                     CigaretteItemCard(
                         cigarette = cig,
                         viewModel = viewModel,

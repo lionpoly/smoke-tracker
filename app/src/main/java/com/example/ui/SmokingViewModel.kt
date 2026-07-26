@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,6 +68,14 @@ enum class AppCurrency(
         val name = if (lang == AppLanguage.EN) nameEn else nameZh
         return "$flag $symbol $code ($name)"
     }
+}
+
+enum class CigaretteSortOption(val code: String, val labelKey: String) {
+    DEFAULT("DEFAULT", "sort_default"),
+    NAME_ASC("NAME_ASC", "sort_name_asc"),
+    NAME_DESC("NAME_DESC", "sort_name_desc"),
+    PRICE_ASC("PRICE_ASC", "sort_price_asc"),
+    PRICE_DESC("PRICE_DESC", "sort_price_desc")
 }
 
 sealed interface AiAdviceState {
@@ -198,6 +207,49 @@ class SmokingViewModel(
         maxIntervalThresholdHours.value = valid
         context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
             ?.edit()?.putInt("max_interval_hours", valid)?.apply()
+    }
+
+    val cigaretteSortOption = MutableStateFlow(CigaretteSortOption.DEFAULT)
+
+    fun setCigaretteSortOption(option: CigaretteSortOption) {
+        cigaretteSortOption.value = option
+    }
+
+    init {
+        viewModelScope.launch {
+            val existing = repository.allCigarettes.firstOrNull() ?: emptyList()
+            val defaultNames = listOf("白沙", "黄果树", "双喜")
+            val hasNewBrands = existing.any { cig -> defaultNames.any { brand -> cig.name.contains(brand) } }
+            if (existing.isEmpty() || !hasNewBrands) {
+                seedDefaultCigarettes()
+            }
+        }
+    }
+
+    fun seedDefaultCigarettes() {
+        viewModelScope.launch {
+            val existing = repository.allCigarettes.firstOrNull() ?: emptyList()
+            val defaults = listOf(
+                Cigarette(name = "中华 (软中华 / Soft Chunghwa)", price = 65.0, packSize = 20, priceType = "PACK", cartonPrice = 650.0, packsPerCarton = 10, isActive = existing.none { it.isActive }),
+                Cigarette(name = "炫赫门 (南京细支 / Xuanhemen)", price = 18.0, packSize = 20, priceType = "PACK", cartonPrice = 180.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "万宝路 (薄荷双爆 / Marlboro Double Burst)", price = 30.0, packSize = 20, priceType = "PACK", cartonPrice = 300.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "白沙 (硬精品 / Baisha Fine Hard)", price = 11.0, packSize = 20, priceType = "PACK", cartonPrice = 110.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "白沙 (和天下 / Baisha Hetianxia)", price = 100.0, packSize = 20, priceType = "PACK", cartonPrice = 1000.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "黄果树 (佳品 / Huangguoshu Jiapin)", price = 10.0, packSize = 20, priceType = "PACK", cartonPrice = 100.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "黄果树 (长香思 / Huangguoshu Changxiangsi)", price = 13.0, packSize = 20, priceType = "PACK", cartonPrice = 130.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "双喜 (软经典 / Shuangxi Soft Classic)", price = 10.0, packSize = 20, priceType = "PACK", cartonPrice = 100.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "双喜 (硬经典1906 / Shuangxi Classic 1906)", price = 18.0, packSize = 20, priceType = "PACK", cartonPrice = 180.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "利群 (新版 / Liqun New Version)", price = 16.0, packSize = 20, priceType = "PACK", cartonPrice = 160.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "玉溪 (软 / Yuxi Soft)", price = 23.0, packSize = 20, priceType = "PACK", cartonPrice = 230.0, packsPerCarton = 10, isActive = false),
+                Cigarette(name = "芙蓉王 (硬黄 / Furongwang Hard Yellow)", price = 25.0, packSize = 20, priceType = "PACK", cartonPrice = 250.0, packsPerCarton = 10, isActive = false)
+            )
+            val existingNames = existing.map { it.name }.toSet()
+            for (cig in defaults) {
+                if (!existingNames.contains(cig.name)) {
+                    repository.insertCigarette(cig)
+                }
+            }
+        }
     }
 
     val isDemoMode = MutableStateFlow(false)

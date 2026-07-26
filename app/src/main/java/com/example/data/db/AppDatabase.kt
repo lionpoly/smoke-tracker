@@ -77,7 +77,7 @@ abstract class AppDatabase : RoomDatabase() {
                         name = "炫赫门 (南京细支 / Xuanhemen)",
                         price = 18.0,
                         packSize = 20,
-                        priceType = "CARTON",
+                        priceType = "PACK",
                         cartonPrice = 180.0,
                         packsPerCarton = 10,
                         isActive = false
@@ -90,6 +90,105 @@ abstract class AppDatabase : RoomDatabase() {
                         packSize = 20,
                         priceType = "PACK",
                         cartonPrice = 300.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
+                )
+                cigaretteDao.insertCigarette(
+                    Cigarette(
+                        name = "白沙 (硬精品 / Baisha Fine Hard)",
+                        price = 11.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 110.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
+                )
+                cigaretteDao.insertCigarette(
+                    Cigarette(
+                        name = "白沙 (和天下 / Baisha Hetianxia)",
+                        price = 100.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 1000.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
+                )
+                cigaretteDao.insertCigarette(
+                    Cigarette(
+                        name = "黄果树 (佳品 / Huangguoshu Jiapin)",
+                        price = 10.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 100.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
+                )
+                cigaretteDao.insertCigarette(
+                    Cigarette(
+                        name = "黄果树 (长香思 / Huangguoshu Changxiangsi)",
+                        price = 13.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 130.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
+                )
+                cigaretteDao.insertCigarette(
+                    Cigarette(
+                        name = "双喜 (软经典 / Shuangxi Soft Classic)",
+                        price = 10.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 100.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
+                )
+                cigaretteDao.insertCigarette(
+                    Cigarette(
+                        name = "双喜 (硬经典1906 / Shuangxi Classic 1906)",
+                        price = 18.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 180.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
+                )
+                cigaretteDao.insertCigarette(
+                    Cigarette(
+                        name = "利群 (新版 / Liqun New Version)",
+                        price = 16.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 160.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
+                )
+                cigaretteDao.insertCigarette(
+                    Cigarette(
+                        name = "玉溪 (软 / Yuxi Soft)",
+                        price = 23.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 230.0,
+                        packsPerCarton = 10,
+                        isActive = false
+                    )
+                )
+                cigaretteDao.insertCigarette(
+                    Cigarette(
+                        name = "芙蓉王 (硬黄 / Furongwang Hard Yellow)",
+                        price = 25.0,
+                        packSize = 20,
+                        priceType = "PACK",
+                        cartonPrice = 250.0,
                         packsPerCarton = 10,
                         isActive = false
                     )
