@@ -140,6 +140,13 @@ app/src/main/java/com/example/
 
 ---
 
+## ❓ Frequently Asked Questions (FAQ)
+
+### Q: Will updating a cigarette brand's price change my historical smoking expense data?
+**A: No.** Every smoking log takes a financial snapshot of the exact unit cost (`cost`) at the moment you hit the log button. Modifying a cigarette brand's price, changing pricing rules, or syncing brand data from a JSON URL will only apply to **future** logs. All past expense records remain intact and historically accurate.
+
+---
+
 ## 📄 License & Repository Notice
 
 - **License**: Released under the **[GNU General Public License v3.0 (GPL-3.0)](LICENSE)**.
