@@ -145,6 +145,15 @@ app/src/main/java/com/example/
 ### Q: Will updating a cigarette brand's price change my historical smoking expense data?
 **A: No.** Every smoking log takes a financial snapshot of the exact unit cost (`cost`) at the moment you hit the log button. Modifying a cigarette brand's price, changing pricing rules, or syncing brand data from a JSON URL will only apply to **future** logs. All past expense records remain intact and historically accurate.
 
+### Q: How to prevent "signature inconsistent" error when updating APKs built by GitHub Actions?
+**A:** Android requires all updates to be signed with the exact same keystore certificate.
+1. **Default Method (Automatic)**: Ensure `debug.keystore.base64` in the project root is committed to your GitHub repository. GitHub Actions will automatically decode this file and sign every build with the exact same certificate.
+2. **Custom Release Keystore (Recommended)**:
+   - Convert your `.jks` or `.keystore` file to Base64 (`base64 -w 0 my-release-key.jks > key.txt`).
+   - Go to your GitHub Repository -> **Settings** -> **Secrets and variables** -> **Actions**.
+   - Create a Secret named `RELEASE_KEYSTORE_BASE64` with the Base64 string value.
+   - GitHub Actions will automatically decode and use your persistent release keystore.
+
 ---
 
 ## 📄 License & Repository Notice

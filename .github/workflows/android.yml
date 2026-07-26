@@ -42,14 +42,20 @@ jobs:
             fi
           fi
 
-      - name: Restore Debug Keystore
+      - name: Restore Keystore for Consistent APK Signing
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "Decoding custom release keystore from GitHub Secrets..."
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          fi
           if [ -f debug.keystore.base64 ] && [ -s debug.keystore.base64 ]; then
-            echo "Decoding existing debug.keystore.base64..."
+            echo "Decoding repository debug.keystore.base64..."
             base64 --decode debug.keystore.base64 > debug.keystore || rm -f debug.keystore
           fi
-          if [ ! -f debug.keystore ]; then
-            echo "Warning: debug.keystore not restored. Generating a new debug keystore..."
+          if [ ! -f debug.keystore ] && [ ! -f my-upload-key.jks ]; then
+            echo "Warning: Neither debug.keystore.base64 nor RELEASE_KEYSTORE_BASE64 found. Generating temporary keystore..."
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 

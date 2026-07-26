@@ -144,6 +144,15 @@ app/src/main/java/com/example/
 ### Q: 修改或同步烟盒数据中的香烟价格，会影响历史的吸烟开销数据吗？
 **A: 不会。** 每次打卡（记录吸烟）时，系统都会实时计算并保存一条 **独立的花费快照 (Snapshot Cost)**。因此，无论是修改已有香烟的价格、调整单包/整条计价规则，还是通过 JSON URL 同步更新品牌数据，都**仅对后续新增的打卡生效**，历史已产生的开销记录与统计均保持原样不变，确保财务数据的准确与真实。
 
+### Q: 如何解决 GitHub Actions 打包出的应用每次签名不同导致无发覆盖更新（提示签名冲突需卸载重装）的问题？
+**A:** Android 系统要求覆盖更新应用时必须使用完全相同的签名证书。产生此问题的原因通常是构建时动态生成了新的临时密钥。
+1. **开箱即用（推荐提交项目基准密钥）**：请确保仓库根目录下的 `debug.keystore.base64` 文件已提交推送至 GitHub 仓库。GitHub Actions 会在每次打包时自动解密该基准密钥进行签名，确保生成的每一个 APK 签名完全一致。
+2. **自定义正式签名（通过 GitHub Secrets）**：
+   - 将你的 `.jks` 或 `.keystore` 密钥转码为 Base64 文本（例如执行命令 `base64 -w 0 my-upload-key.jks > key.txt`）。
+   - 进入 GitHub 仓库页面 -> **Settings** -> **Secrets and variables** -> **Actions**。
+   - 新增一个名为 `RELEASE_KEYSTORE_BASE64` 的 Secret，将其内容粘贴进去。
+   - GitHub Actions 在构建时会自动优先解密该正式密钥并完成签名，确保版本升级无缝覆盖安装。
+
 ---
 
 ## 📄 协议与仓库说明
