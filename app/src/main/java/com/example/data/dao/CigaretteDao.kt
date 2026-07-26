@@ -17,6 +17,9 @@ interface CigaretteDao {
     @Query("SELECT * FROM cigarettes WHERE id = :id LIMIT 1")
     suspend fun getCigaretteById(id: Int): Cigarette?
 
+    @Query("SELECT * FROM cigarettes WHERE ean = :ean AND ean != '' LIMIT 1")
+    suspend fun getCigaretteByEan(ean: String): Cigarette?
+
     @Query("SELECT * FROM cigarettes WHERE isActive = 1 LIMIT 1")
     suspend fun getActiveCigarette(): Cigarette?
 

@@ -14,6 +14,8 @@ data class Cigarette(
     val priceType: String = "PACK", // "PACK" (单包零售价) or "CARTON" (单条零售价)
     val cartonPrice: Double = price * 10, // Price per carton (1 carton = 10 packs)
     val packsPerCarton: Int = 10, // Packs per carton, typically 10
+    val ean: String = "", // EAN 商品条形码
+    val image: String = "", // 香烟图片链接
     val isActive: Boolean = false, // Currently selected/active cigarette
     val createdAt: Long = System.currentTimeMillis()
 )

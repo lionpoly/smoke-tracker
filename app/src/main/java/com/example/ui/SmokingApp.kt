@@ -3,6 +3,8 @@ package com.example.ui
 import android.app.DatePickerDialog
 import kotlinx.coroutines.isActive
 import androidx.compose.animation.AnimatedVisibility
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
@@ -1731,8 +1733,8 @@ fun StoreScreen(viewModel: SmokingViewModel) {
             lang = lang,
             currencySymbol = currency.symbol,
             onDismiss = { showAddCigaretteDialog = false },
-            onConfirm = { name, price, packSize, priceType, cartonPrice, packsPerCarton ->
-                viewModel.addCigarette(name, price, packSize, priceType, cartonPrice, packsPerCarton)
+            onConfirm = { name, price, packSize, priceType, cartonPrice, packsPerCarton, ean, image ->
+                viewModel.addCigarette(name, price, packSize, priceType, cartonPrice, packsPerCarton, ean, image)
                 showAddCigaretteDialog = false
             }
         )
@@ -1757,6 +1759,8 @@ fun CigaretteItemCard(
     var editPrice by remember { mutableStateOf(cigarette.price.toString()) }
     var editCartonPrice by remember { mutableStateOf(cigarette.cartonPrice.toString()) }
     var editPackSize by remember { mutableStateOf(cigarette.packSize.toString()) }
+    var editEan by remember { mutableStateOf(cigarette.ean) }
+    var editImage by remember { mutableStateOf(cigarette.image) }
 
     var offsetX by remember { mutableFloatStateOf(0f) }
     val animatedOffsetX by animateFloatAsState(
@@ -1865,30 +1869,73 @@ fun CigaretteItemCard(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f)
                     ) {
-                        if (cigarette.isActive) {
+                        if (cigarette.image.isNotBlank()) {
+                            AsyncImage(
+                                model = cigarette.image,
+                                contentDescription = cigarette.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                        } else {
                             Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                modifier = Modifier.size(42.dp)
                             ) {
-                                Text(
-                                    text = AppStrings.get("in_use", lang),
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SmokingRooms,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
                         }
 
-                        Text(
-                            text = cigarette.name,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (cigarette.isActive) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary
+                                    ) {
+                                        Text(
+                                            text = AppStrings.get("in_use", lang),
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+
+                                Text(
+                                    text = cigarette.name,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            if (cigarette.ean.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "EAN: ${cigarette.ean}",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
                     }
 
                     IconButton(
@@ -2016,6 +2063,21 @@ fun CigaretteItemCard(
                             )
                         }
 
+                        OutlinedTextField(
+                            value = editEan,
+                            onValueChange = { editEan = it },
+                            label = { Text(AppStrings.get("ean_code", lang)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = editImage,
+                            onValueChange = { editImage = it },
+                            label = { Text(AppStrings.get("image_url", lang)) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
                         Button(
                             onClick = {
                                 val p = editPrice.toDoubleOrNull() ?: cigarette.price
@@ -2029,7 +2091,9 @@ fun CigaretteItemCard(
                                         price = calcPrice,
                                         cartonPrice = if (editPriceType == "PACK") p * 10.0 else cp,
                                         priceType = editPriceType,
-                                        packSize = ps
+                                        packSize = ps,
+                                        ean = editEan.trim(),
+                                        image = editImage.trim()
                                     )
                                 )
                                 expanded = false
@@ -2065,6 +2129,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     var showGoalDialog by remember { mutableStateOf(false) }
     var showIntervalDialog by remember { mutableStateOf(false) }
     var showCloudSyncDialog by remember { mutableStateOf(false) }
+    var showBrandSyncDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -2213,6 +2278,18 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 iconTintColor = Color(0xFF00897B),
                 onClick = { showCloudSyncDialog = true }
             )
+
+            HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            WeChatSettingsItem(
+                title = AppStrings.get("brand_sync_title", lang),
+                subtitle = AppStrings.get("brand_sync_subtitle", lang),
+                value = if (lang == AppLanguage.EN) "Sync" else "设置与同步",
+                icon = Icons.Rounded.Category,
+                iconBgColor = Color(0xFFFF8F00).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFFFF8F00),
+                onClick = { showBrandSyncDialog = true }
+            )
         }
 
         // Group 4: 关于 (About)
@@ -2241,6 +2318,100 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
     }
 
     // ================= Dialogs =================
+    if (showBrandSyncDialog) {
+        val jsonUrl by viewModel.cigaretteJsonUrl.collectAsStateWithLifecycle()
+        val isSyncing by viewModel.isCigaretteSyncing.collectAsStateWithLifecycle()
+        val syncResult by viewModel.cigaretteSyncResult.collectAsStateWithLifecycle()
+        var urlInput by remember { mutableStateOf(jsonUrl) }
+
+        AlertDialog(
+            onDismissRequest = { showBrandSyncDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Category, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(AppStrings.get("brand_sync_dialog_title", lang), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = if (lang == AppLanguage.EN)
+                            "Specify a JSON URL containing cigarette brand data. The system will match brands by EAN barcode to update prices, images, and details, or add new brands."
+                        else
+                            "请输入 JSON 格式香烟品牌数据的 URL 链接。系统将依据 EAN 商品条形码进行自动匹配并更新价格、图片及规则，无匹配时将自动新增品牌。",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = urlInput,
+                        onValueChange = {
+                            urlInput = it
+                            viewModel.setCigaretteJsonUrl(it)
+                        },
+                        label = { Text(AppStrings.get("brand_sync_url_label", lang)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 3
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = {
+                                urlInput = "DEFAULT"
+                                viewModel.setCigaretteJsonUrl("DEFAULT")
+                            }
+                        ) {
+                            Text(AppStrings.get("brand_sync_use_default", lang), fontSize = 12.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.syncCigarettesFromJsonUrl(urlInput)
+                            },
+                            enabled = !isSyncing
+                        ) {
+                            if (isSyncing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            Text(AppStrings.get("brand_sync_btn", lang), fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    syncResult?.let { result ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = result,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBrandSyncDialog = false }) {
+                    Text(AppStrings.get("confirm", lang), fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
     if (showAboutDialog) {
         AlertDialog(
             onDismissRequest = { showAboutDialog = false },
@@ -3048,13 +3219,15 @@ fun AddCigaretteDialog(
     lang: AppLanguage = AppLanguage.ZH,
     currencySymbol: String = "¥",
     onDismiss: () -> Unit,
-    onConfirm: (name: String, price: Double, packSize: Int, priceType: String, cartonPrice: Double, packsPerCarton: Int) -> Unit
+    onConfirm: (name: String, price: Double, packSize: Int, priceType: String, cartonPrice: Double, packsPerCarton: Int, ean: String, image: String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var priceType by remember { mutableStateOf("PACK") } // "PACK" or "CARTON"
     var priceInput by remember { mutableStateOf("") }
     var packSizeInput by remember { mutableStateOf("20") }
     var packsPerCartonInput by remember { mutableStateOf("10") }
+    var eanInput by remember { mutableStateOf("") }
+    var imageInput by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -3139,6 +3312,21 @@ fun AddCigaretteDialog(
                     )
                 }
 
+                OutlinedTextField(
+                    value = eanInput,
+                    onValueChange = { eanInput = it },
+                    label = { Text(AppStrings.get("ean_code", lang)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = imageInput,
+                    onValueChange = { imageInput = it },
+                    label = { Text(AppStrings.get("image_url", lang)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 // Dynamic Live Conversion Preview
                 val rawVal = priceInput.toDoubleOrNull() ?: 0.0
                 val pSize = packSizeInput.toIntOrNull() ?: 20
@@ -3184,7 +3372,7 @@ fun AddCigaretteDialog(
                     Button(
                         onClick = {
                             if (name.isNotEmpty() && rawVal > 0) {
-                                onConfirm(name, packPrice, pSize, priceType, cartonPrice, ppCarton)
+                                onConfirm(name, packPrice, pSize, priceType, cartonPrice, ppCarton, eanInput.trim(), imageInput.trim())
                             }
                         }
                     ) {

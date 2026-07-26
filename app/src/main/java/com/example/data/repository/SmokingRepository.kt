@@ -25,6 +25,10 @@ class SmokingRepository(
         return cigaretteDao.getCigaretteById(id)
     }
 
+    suspend fun getCigaretteByEan(ean: String): Cigarette? {
+        return cigaretteDao.getCigaretteByEan(ean)
+    }
+
     suspend fun insertCigarette(cigarette: Cigarette): Long {
         return cigaretteDao.insertCigarette(cigarette)
     }

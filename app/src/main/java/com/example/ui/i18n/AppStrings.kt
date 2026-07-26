@@ -197,7 +197,15 @@ object AppStrings {
         "sort_name_asc" to "名称 A-Z",
         "sort_name_desc" to "名称 Z-A",
         "sort_price_asc" to "价格 ⬆",
-        "sort_price_desc" to "价格 ⬇"
+        "sort_price_desc" to "价格 ⬇",
+        "ean_code" to "商品条形码 (EAN)",
+        "image_url" to "图片链接 (Image URL)",
+        "brand_sync_title" to "香烟品牌数据同步",
+        "brand_sync_subtitle" to "通过 JSON URL 手动更新/新增品牌 (EAN 匹配)",
+        "brand_sync_dialog_title" to "同步香烟品牌数据",
+        "brand_sync_url_label" to "JSON 数据源 URL",
+        "brand_sync_btn" to "手动同步",
+        "brand_sync_use_default" to "使用内置样本/示例"
     )
 
     private val enMap = mapOf(
@@ -366,6 +374,14 @@ object AppStrings {
         "sort_name_asc" to "Name A-Z",
         "sort_name_desc" to "Name Z-A",
         "sort_price_asc" to "Price ⬆",
-        "sort_price_desc" to "Price ⬇"
+        "sort_price_desc" to "Price ⬇",
+        "ean_code" to "Barcode (EAN)",
+        "image_url" to "Image URL",
+        "brand_sync_title" to "Cigarette Brand Sync",
+        "brand_sync_subtitle" to "Sync brand data via JSON URL (EAN Matching)",
+        "brand_sync_dialog_title" to "Sync Cigarette Brands",
+        "brand_sync_url_label" to "JSON Data Source URL",
+        "brand_sync_btn" to "Sync Now",
+        "brand_sync_use_default" to "Use Built-in Sample"
     )
 }
