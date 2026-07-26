@@ -239,18 +239,18 @@ class SmokingViewModel(
         viewModelScope.launch {
             val existing = repository.allCigarettes.firstOrNull() ?: emptyList()
             val defaults = listOf(
-                Cigarette(name = "中华 (软中华 / Soft Chunghwa)", price = 65.0, packSize = 20, priceType = "PACK", cartonPrice = 650.0, packsPerCarton = 10, ean = "6901028000018", image = "", isActive = existing.none { it.isActive }),
-                Cigarette(name = "炫赫门 (南京细支 / Xuanhemen)", price = 18.0, packSize = 20, priceType = "PACK", cartonPrice = 180.0, packsPerCarton = 10, ean = "6901028190016", image = "", isActive = false),
-                Cigarette(name = "万宝路 (薄荷双爆 / Marlboro Double Burst)", price = 30.0, packSize = 20, priceType = "PACK", cartonPrice = 300.0, packsPerCarton = 10, ean = "7622210000015", image = "", isActive = false),
-                Cigarette(name = "白沙 (硬精品 / Baisha Fine Hard)", price = 11.0, packSize = 20, priceType = "PACK", cartonPrice = 110.0, packsPerCarton = 10, ean = "6901028113008", image = "", isActive = false),
-                Cigarette(name = "白沙 (和天下 / Baisha Hetianxia)", price = 100.0, packSize = 20, priceType = "PACK", cartonPrice = 1000.0, packsPerCarton = 10, ean = "6901028113886", image = "", isActive = false),
-                Cigarette(name = "黄果树 (佳品 / Huangguoshu Jiapin)", price = 10.0, packSize = 20, priceType = "PACK", cartonPrice = 100.0, packsPerCarton = 10, ean = "6901028240018", image = "", isActive = false),
-                Cigarette(name = "黄果树 (长香思 / Huangguoshu Changxiangsi)", price = 13.0, packSize = 20, priceType = "PACK", cartonPrice = 130.0, packsPerCarton = 10, ean = "6901028240056", image = "", isActive = false),
-                Cigarette(name = "双喜 (软经典 / Shuangxi Soft Classic)", price = 10.0, packSize = 20, priceType = "PACK", cartonPrice = 100.0, packsPerCarton = 10, ean = "6901028010017", image = "", isActive = false),
-                Cigarette(name = "双喜 (硬经典1906 / Shuangxi Classic 1906)", price = 18.0, packSize = 20, priceType = "PACK", cartonPrice = 180.0, packsPerCarton = 10, ean = "6901028011908", image = "", isActive = false),
-                Cigarette(name = "利群 (新版 / Liqun New Version)", price = 16.0, packSize = 20, priceType = "PACK", cartonPrice = 160.0, packsPerCarton = 10, ean = "6901028207110", image = "", isActive = false),
-                Cigarette(name = "玉溪 (软 / Yuxi Soft)", price = 23.0, packSize = 20, priceType = "PACK", cartonPrice = 230.0, packsPerCarton = 10, ean = "6901028180017", image = "", isActive = false),
-                Cigarette(name = "芙蓉王 (硬黄 / Furongwang Hard Yellow)", price = 25.0, packSize = 20, priceType = "PACK", cartonPrice = 250.0, packsPerCarton = 10, ean = "6901028193017", image = "", isActive = false)
+                Cigarette(name = "中华 (软中华 / Soft Chunghwa)", price = 65.0, packSize = 20, priceType = "PACK", cartonPrice = 650.0, packsPerCarton = 10, ean = "6901028000018", image = "", tarAmount = "11mg", isActive = existing.none { it.isActive }),
+                Cigarette(name = "炫赫门 (南京细支 / Xuanhemen)", price = 18.0, packSize = 20, priceType = "PACK", cartonPrice = 180.0, packsPerCarton = 10, ean = "6901028190016", image = "", tarAmount = "8mg", isActive = false),
+                Cigarette(name = "万宝路 (薄荷双爆 / Marlboro Double Burst)", price = 30.0, packSize = 20, priceType = "PACK", cartonPrice = 300.0, packsPerCarton = 10, ean = "7622210000015", image = "", tarAmount = "8mg", isActive = false),
+                Cigarette(name = "白沙 (硬精品 / Baisha Fine Hard)", price = 11.0, packSize = 20, priceType = "PACK", cartonPrice = 110.0, packsPerCarton = 10, ean = "6901028113008", image = "", tarAmount = "11mg", isActive = false),
+                Cigarette(name = "白沙 (和天下 / Baisha Hetianxia)", price = 100.0, packSize = 20, priceType = "PACK", cartonPrice = 1000.0, packsPerCarton = 10, ean = "6901028113886", image = "", tarAmount = "10mg", isActive = false),
+                Cigarette(name = "黄果树 (佳品 / Huangguoshu Jiapin)", price = 10.0, packSize = 20, priceType = "PACK", cartonPrice = 100.0, packsPerCarton = 10, ean = "6901028240018", image = "", tarAmount = "10mg", isActive = false),
+                Cigarette(name = "黄果树 (长香思 / Huangguoshu Changxiangsi)", price = 13.0, packSize = 20, priceType = "PACK", cartonPrice = 130.0, packsPerCarton = 10, ean = "6901028240056", image = "", tarAmount = "10mg", isActive = false),
+                Cigarette(name = "双喜 (软经典 / Shuangxi Soft Classic)", price = 10.0, packSize = 20, priceType = "PACK", cartonPrice = 100.0, packsPerCarton = 10, ean = "6901028010017", image = "", tarAmount = "11mg", isActive = false),
+                Cigarette(name = "双喜 (硬经典1906 / Shuangxi Classic 1906)", price = 18.0, packSize = 20, priceType = "PACK", cartonPrice = 180.0, packsPerCarton = 10, ean = "6901028011908", image = "", tarAmount = "10mg", isActive = false),
+                Cigarette(name = "利群 (新版 / Liqun New Version)", price = 16.0, packSize = 20, priceType = "PACK", cartonPrice = 160.0, packsPerCarton = 10, ean = "6901028207110", image = "", tarAmount = "11mg", isActive = false),
+                Cigarette(name = "玉溪 (软 / Yuxi Soft)", price = 23.0, packSize = 20, priceType = "PACK", cartonPrice = 230.0, packsPerCarton = 10, ean = "6901028180017", image = "", tarAmount = "11mg", isActive = false),
+                Cigarette(name = "芙蓉王 (硬黄 / Furongwang Hard Yellow)", price = 25.0, packSize = 20, priceType = "PACK", cartonPrice = 250.0, packsPerCarton = 10, ean = "6901028193017", image = "", tarAmount = "11mg", isActive = false)
             )
             val existingNames = existing.map { it.name }.toSet()
             for (cig in defaults) {
@@ -300,6 +300,7 @@ class SmokingViewModel(
                     val cartonPrice = obj.optDouble("cartonPrice", price * 10)
                     val packsPerCarton = obj.optInt("packsPerCarton", 10)
                     val image = obj.optString("image", "").trim()
+                    val tarAmount = obj.optString("tarAmount", obj.optString("tar", "")).trim()
 
                     val matched = if (ean.isNotBlank()) existingByEan[ean] else existingByName[name]
                     if (matched != null) {
@@ -311,7 +312,8 @@ class SmokingViewModel(
                             cartonPrice = cartonPrice,
                             packsPerCarton = packsPerCarton,
                             ean = if (ean.isNotBlank()) ean else matched.ean,
-                            image = if (image.isNotBlank()) image else matched.image
+                            image = if (image.isNotBlank()) image else matched.image,
+                            tarAmount = if (tarAmount.isNotBlank()) tarAmount else matched.tarAmount
                         )
                         repository.updateCigarette(updated)
                         updatedCount++
@@ -325,6 +327,7 @@ class SmokingViewModel(
                             packsPerCarton = packsPerCarton,
                             ean = ean,
                             image = image,
+                            tarAmount = tarAmount,
                             isActive = false
                         )
                         repository.insertCigarette(newCig)
@@ -778,7 +781,8 @@ class SmokingViewModel(
         cartonPrice: Double = price * 10,
         packsPerCarton: Int = 10,
         ean: String = "",
-        image: String = ""
+        image: String = "",
+        tarAmount: String = ""
     ) {
         viewModelScope.launch {
             val calculatedPrice = if (priceType == "CARTON") cartonPrice / packsPerCarton.coerceAtLeast(1) else price
@@ -792,6 +796,7 @@ class SmokingViewModel(
                     packsPerCarton = packsPerCarton,
                     ean = ean,
                     image = image,
+                    tarAmount = tarAmount,
                     isActive = cigarettes.value.isEmpty()
                 )
             )

@@ -16,6 +16,7 @@ data class Cigarette(
     val packsPerCarton: Int = 10, // Packs per carton, typically 10
     val ean: String = "", // EAN 商品条形码
     val image: String = "", // 香烟图片链接
+    val tarAmount: String = "", // 焦油量 (例如: "10mg")
     val isActive: Boolean = false, // Currently selected/active cigarette
     val createdAt: Long = System.currentTimeMillis()
 )

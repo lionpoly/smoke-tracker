@@ -1733,8 +1733,8 @@ fun StoreScreen(viewModel: SmokingViewModel) {
             lang = lang,
             currencySymbol = currency.symbol,
             onDismiss = { showAddCigaretteDialog = false },
-            onConfirm = { name, price, packSize, priceType, cartonPrice, packsPerCarton, ean, image ->
-                viewModel.addCigarette(name, price, packSize, priceType, cartonPrice, packsPerCarton, ean, image)
+            onConfirm = { name, price, packSize, priceType, cartonPrice, packsPerCarton, ean, image, tarAmount ->
+                viewModel.addCigarette(name, price, packSize, priceType, cartonPrice, packsPerCarton, ean, image, tarAmount)
                 showAddCigaretteDialog = false
             }
         )
@@ -1761,6 +1761,7 @@ fun CigaretteItemCard(
     var editPackSize by remember { mutableStateOf(cigarette.packSize.toString()) }
     var editEan by remember { mutableStateOf(cigarette.ean) }
     var editImage by remember { mutableStateOf(cigarette.image) }
+    var editTarAmount by remember { mutableStateOf(cigarette.tarAmount) }
 
     var offsetX by remember { mutableFloatStateOf(0f) }
     val animatedOffsetX by animateFloatAsState(
@@ -1926,14 +1927,35 @@ fun CigaretteItemCard(
                                 )
                             }
 
-                            if (cigarette.ean.isNotBlank()) {
+                            if (cigarette.ean.isNotBlank() || cigarette.tarAmount.isNotBlank()) {
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "EAN: ${cigarette.ean}",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (cigarette.ean.isNotBlank()) {
+                                        Text(
+                                            text = "EAN: ${cigarette.ean}",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                    if (cigarette.tarAmount.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f)
+                                        ) {
+                                            Text(
+                                                text = "${if (lang == AppLanguage.EN) "Tar" else "焦油量"}: ${cigarette.tarAmount}",
+                                                fontSize = 10.5.sp,
+                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -2078,6 +2100,13 @@ fun CigaretteItemCard(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        OutlinedTextField(
+                            value = editTarAmount,
+                            onValueChange = { editTarAmount = it },
+                            label = { Text(AppStrings.get("tar_amount", lang)) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
                         Button(
                             onClick = {
                                 val p = editPrice.toDoubleOrNull() ?: cigarette.price
@@ -2093,7 +2122,8 @@ fun CigaretteItemCard(
                                         priceType = editPriceType,
                                         packSize = ps,
                                         ean = editEan.trim(),
-                                        image = editImage.trim()
+                                        image = editImage.trim(),
+                                        tarAmount = editTarAmount.trim()
                                     )
                                 )
                                 expanded = false
@@ -3219,7 +3249,7 @@ fun AddCigaretteDialog(
     lang: AppLanguage = AppLanguage.ZH,
     currencySymbol: String = "¥",
     onDismiss: () -> Unit,
-    onConfirm: (name: String, price: Double, packSize: Int, priceType: String, cartonPrice: Double, packsPerCarton: Int, ean: String, image: String) -> Unit
+    onConfirm: (name: String, price: Double, packSize: Int, priceType: String, cartonPrice: Double, packsPerCarton: Int, ean: String, image: String, tarAmount: String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var priceType by remember { mutableStateOf("PACK") } // "PACK" or "CARTON"
@@ -3228,6 +3258,7 @@ fun AddCigaretteDialog(
     var packsPerCartonInput by remember { mutableStateOf("10") }
     var eanInput by remember { mutableStateOf("") }
     var imageInput by remember { mutableStateOf("") }
+    var tarAmountInput by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -3327,6 +3358,13 @@ fun AddCigaretteDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                OutlinedTextField(
+                    value = tarAmountInput,
+                    onValueChange = { tarAmountInput = it },
+                    label = { Text(AppStrings.get("tar_amount", lang)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 // Dynamic Live Conversion Preview
                 val rawVal = priceInput.toDoubleOrNull() ?: 0.0
                 val pSize = packSizeInput.toIntOrNull() ?: 20
@@ -3372,7 +3410,7 @@ fun AddCigaretteDialog(
                     Button(
                         onClick = {
                             if (name.isNotEmpty() && rawVal > 0) {
-                                onConfirm(name, packPrice, pSize, priceType, cartonPrice, ppCarton, eanInput.trim(), imageInput.trim())
+                                onConfirm(name, packPrice, pSize, priceType, cartonPrice, ppCarton, eanInput.trim(), imageInput.trim(), tarAmountInput.trim())
                             }
                         }
                     ) {

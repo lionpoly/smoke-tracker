@@ -7,7 +7,8 @@
     "priceType": "PACK",
     "cartonPrice": 650.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "11mg"
   },
   {
     "ean": "6901028190016",
@@ -17,7 +18,8 @@
     "priceType": "PACK",
     "cartonPrice": 180.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "8mg"
   },
   {
     "ean": "7622210000015",
@@ -27,7 +29,8 @@
     "priceType": "PACK",
     "cartonPrice": 300.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "8mg"
   },
   {
     "ean": "6901028113008",
@@ -37,7 +40,8 @@
     "priceType": "PACK",
     "cartonPrice": 110.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "11mg"
   },
   {
     "ean": "6901028113886",
@@ -47,7 +51,8 @@
     "priceType": "PACK",
     "cartonPrice": 1000.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "10mg"
   },
   {
     "ean": "6901028240018",
@@ -57,7 +62,8 @@
     "priceType": "PACK",
     "cartonPrice": 100.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "10mg"
   },
   {
     "ean": "6901028240056",
@@ -67,7 +73,8 @@
     "priceType": "PACK",
     "cartonPrice": 130.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "10mg"
   },
   {
     "ean": "6901028010017",
@@ -77,7 +84,8 @@
     "priceType": "PACK",
     "cartonPrice": 100.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "11mg"
   },
   {
     "ean": "6901028011908",
@@ -87,7 +95,8 @@
     "priceType": "PACK",
     "cartonPrice": 180.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "10mg"
   },
   {
     "ean": "6901028207110",
@@ -97,7 +106,8 @@
     "priceType": "PACK",
     "cartonPrice": 160.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "11mg"
   },
   {
     "ean": "6901028180017",
@@ -107,7 +117,8 @@
     "priceType": "PACK",
     "cartonPrice": 230.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "11mg"
   },
   {
     "ean": "6901028193017",
@@ -117,6 +128,7 @@
     "priceType": "PACK",
     "cartonPrice": 250.0,
     "packsPerCarton": 10,
-    "image": ""
+    "image": "",
+    "tarAmount": "11mg"
   }
 ]
