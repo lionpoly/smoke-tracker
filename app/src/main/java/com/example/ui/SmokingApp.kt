@@ -163,6 +163,23 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             kotlinx.coroutines.delay(1000L)
         }
     }
+    val todayLogs = remember(logs, nowMs / 60000) {
+        val todayStart = Calendar.getInstance().apply {
+            timeInMillis = nowMs
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val todayEnd = Calendar.getInstance().apply {
+            timeInMillis = nowMs
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }.timeInMillis
+        logs.filter { it.timestamp in todayStart..todayEnd }
+    }
     val elapsedText = if (lastLog != null) {
         val diff = (nowMs - lastLog.timestamp).coerceAtLeast(0L)
         val secs = (diff / 1000) % 60
@@ -507,13 +524,13 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = AppStrings.get("log_count", lang, logs.size),
+                text = AppStrings.get("log_count", lang, todayLogs.size),
                 fontSize = 12.sp,
                 color = Color.Gray
             )
         }
 
-        if (logs.isEmpty()) {
+        if (todayLogs.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -529,7 +546,7 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
         } else {
             val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                logs.take(10).forEach { log ->
+                todayLogs.forEach { log ->
                     val cig = cigarettes.firstOrNull { it.id == log.cigaretteId }
                     val logTypeName = when (log.logType) {
                         "SHARED_OUT" -> AppStrings.get("type_shared", lang)

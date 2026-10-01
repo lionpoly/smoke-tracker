@@ -17,7 +17,15 @@
 
 ## 🖼️ Overview & Showcase
 
-![Smoking Tracker Banner](app/src/main/res/drawable/img_smoking_tracker_banner_1784826968435.jpg)
+<p align="center">
+  <img src="app/src/main/res/drawable/smoking_tracker_app_icon.jpg" width="120" height="120" alt="Smoking Tracker Icon" style="border-radius: 24px;" /><br/>
+  <b>Smoking Tracker (SmokeControl / 烟记)</b><br/>
+  <i>Official App Icon</i>
+</p>
+
+<br/>
+
+![Smoking Tracker Banner](app/src/main/res/drawable/smoking_tracker_banner.jpg)
 
 ### 📱 Main Navigation Screens
 
