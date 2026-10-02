@@ -6,6 +6,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
+import retrofit2.http.Path
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
@@ -25,15 +26,16 @@ data class GenerateContentResponse(val candidates: List<Candidate>?)
 data class Candidate(val content: Content?)
 
 interface GeminiApiService {
-    @POST("v1beta/models/gemini-3.5-flash:generateContent")
+    @POST("v1beta/models/{model}:generateContent")
     suspend fun generateContent(
+        @Path("model") model: String,
         @Query("key") apiKey: String,
         @Body request: GenerateContentRequest
     ): GenerateContentResponse
 }
 
 object RetrofitClient {
-    private const val BASE_URL = "https://generativelanguage.googleapis.com/"
+    const val DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/"
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
@@ -41,12 +43,23 @@ object RetrofitClient {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    val geminiService: GeminiApiService by lazy {
-        val retrofit = Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create())
-            .build()
-        retrofit.create(GeminiApiService::class.java)
+    private val moshiFactory = MoshiConverterFactory.create()
+    private val serviceMap = mutableMapOf<String, GeminiApiService>()
+
+    fun getGeminiService(baseUrl: String = DEFAULT_BASE_URL): GeminiApiService {
+        val sanitized = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        return synchronized(serviceMap) {
+            serviceMap.getOrPut(sanitized) {
+                Retrofit.Builder()
+                    .baseUrl(sanitized)
+                    .client(okHttpClient)
+                    .addConverterFactory(moshiFactory)
+                    .build()
+                    .create(GeminiApiService::class.java)
+            }
+        }
     }
+
+    val geminiService: GeminiApiService
+        get() = getGeminiService(DEFAULT_BASE_URL)
 }

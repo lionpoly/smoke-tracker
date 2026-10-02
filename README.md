@@ -1,4 +1,4 @@
-# 🚬 Smoking Tracker (SmokeControl / 烟记)
+# 🚬 Smoking Tracker (烟记)
 
 > **A smart, privacy-first, offline-ready Android application built with Jetpack Compose & Material 3 for tracking smoking habits, social cigarette sharing, financial expenses, reduction goals, and AI-powered health advice.**
 
@@ -19,7 +19,7 @@
 
 <p align="center">
   <img src="app/src/main/res/drawable/smoking_tracker_app_icon.jpg" width="120" height="120" alt="Smoking Tracker Icon" style="border-radius: 24px;" /><br/>
-  <b>Smoking Tracker (SmokeControl / 烟记)</b><br/>
+  <b>Smoking Tracker (烟记)</b><br/>
   <i>Official App Icon</i>
 </p>
 

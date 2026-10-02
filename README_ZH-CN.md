@@ -1,4 +1,4 @@
-# 🚬 Smoking Tracker (SmokeControl / 烟记)
+# 🚬 烟记 (Smoking Tracker)
 
 > **一款基于 Jetpack Compose 与 Material 3 打造的高颜值、注重隐私、完全支持离线的智能吸烟记录与健康管理 Android 应用。**
 

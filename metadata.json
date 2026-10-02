@@ -1,5 +1,5 @@
 {
-  "name": "Smoking Tracker",
+  "name": "烟记",
   "description": "吸烟量记录、趋势图表分析、戒烟目标设定、智能健康提醒、烟草种类管理与云端数据备份。",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

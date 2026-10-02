@@ -1,7 +1,9 @@
 package com.example.ui
 
 import android.app.DatePickerDialog
+import android.widget.Toast
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -14,6 +16,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.ui.unit.IntOffset
@@ -35,6 +42,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -45,8 +54,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,6 +73,7 @@ import com.example.data.model.SmokingLog
 import com.example.data.sync.SyncState
 import com.example.ui.i18n.AppColorPreset
 import com.example.ui.i18n.AppLanguage
+import com.example.data.api.RetrofitClient
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.AppThemeMode
 import java.text.SimpleDateFormat
@@ -67,6 +83,7 @@ import java.util.*
 @Composable
 fun SmokingApp(viewModel: SmokingViewModel) {
     var selectedTab by remember { mutableIntStateOf(0) }
+    var showAiConfigDialog by remember { mutableStateOf(false) }
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
 
@@ -133,17 +150,41 @@ fun SmokingApp(viewModel: SmokingViewModel) {
                 .padding(paddingValues)
         ) {
             when (selectedTab) {
-                0 -> DashboardScreen(viewModel = viewModel, stats = stats)
+                0 -> DashboardScreen(viewModel = viewModel, stats = stats, onOpenAiConfig = { showAiConfigDialog = true })
                 1 -> ChartsScreen(viewModel = viewModel, stats = stats)
                 2 -> StoreScreen(viewModel = viewModel)
-                3 -> SettingsScreen(viewModel = viewModel, stats = stats)
+                3 -> SettingsScreen(viewModel = viewModel, stats = stats, onOpenAiConfig = { showAiConfigDialog = true })
             }
         }
+    }
+
+    if (showAiConfigDialog) {
+        val aiConfig by viewModel.aiCustomConfig.collectAsStateWithLifecycle()
+        AiConfigDialog(
+            currentConfig = aiConfig,
+            lang = lang,
+            onDismiss = { showAiConfigDialog = false },
+            onSave = { updated ->
+                viewModel.updateAiConfig(updated)
+                showAiConfigDialog = false
+            },
+            onReset = {
+                viewModel.resetAiConfig()
+                showAiConfigDialog = false
+            },
+            onTestConnection = { apiKey, baseUrl, model ->
+                viewModel.testAiConnection(apiKey, baseUrl, model)
+            }
+        )
     }
 }
 
 @Composable
-fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
+fun DashboardScreen(
+    viewModel: SmokingViewModel,
+    stats: SmokingStats,
+    onOpenAiConfig: () -> Unit = {}
+) {
     val logs by viewModel.logs.collectAsStateWithLifecycle()
     val cigarettes by viewModel.cigarettes.collectAsStateWithLifecycle()
     val aiAdviceState by viewModel.aiAdviceState.collectAsStateWithLifecycle()
@@ -446,71 +487,15 @@ fun DashboardScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             }
         }
 
-        // Gemini AI Smart Advice Card
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.AutoAwesome,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = AppStrings.get("ai_advice_title", lang),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { viewModel.fetchAiAdvice() },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = if (lang == AppLanguage.EN) "Refresh AI Advice" else "刷新 AI 建议",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                when (val state = aiAdviceState) {
-                    is AiAdviceState.Loading -> {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(vertical = 12.dp)
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(AppStrings.get("ai_advice_loading", lang), fontSize = 13.sp)
-                        }
-                    }
-                    is AiAdviceState.Success -> {
-                        Text(
-                            text = state.advice,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    is AiAdviceState.Error -> {
-                        Text(text = state.error, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
-                    }
-                    else -> {}
-                }
-            }
-        }
+        // AI Coach Smart Advice Card
+        val aiCustomConfig by viewModel.aiCustomConfig.collectAsStateWithLifecycle()
+        AiCoachCard(
+            aiAdviceState = aiAdviceState,
+            aiCustomConfig = aiCustomConfig,
+            lang = lang,
+            onRefresh = { viewModel.fetchAiAdvice(force = true) },
+            onOpenSettings = onOpenAiConfig
+        )
 
         // Recent Logs List Header
         Row(
@@ -2157,7 +2142,11 @@ fun CigaretteItemCard(
 }
 
 @Composable
-fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
+fun SettingsScreen(
+    viewModel: SmokingViewModel,
+    stats: SmokingStats,
+    onOpenAiConfig: () -> Unit = {}
+) {
     val activeGoal by viewModel.activeGoal.collectAsStateWithLifecycle()
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val isDemoMode by viewModel.isDemoMode.collectAsStateWithLifecycle()
@@ -2339,19 +2328,38 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
             )
         }
 
-        // Group 4: 关于 (About)
-        WeChatSettingsGroup(title = if (lang == AppLanguage.EN) "About App" else "关于软件") {
+        // Group: AI 戒烟教练与模型配置
+        WeChatSettingsGroup(title = if (lang == AppLanguage.EN) "AI Coach & Model" else "AI 戒烟教练与大模型配置") {
+            val aiConfig by viewModel.aiCustomConfig.collectAsStateWithLifecycle()
+            val channelSummary = if (aiConfig.enabled) {
+                "${aiConfig.modelName} · ${if (lang == AppLanguage.EN) aiConfig.persona.labelEn else aiConfig.persona.labelZh.substringBefore(" ")}"
+            } else {
+                if (lang == AppLanguage.EN) "Default / Offline Fallback" else "系统预设 / 离线保底"
+            }
             WeChatSettingsItem(
-                title = if (lang == AppLanguage.EN) "Refresh AI Coach Advice" else "刷新 AI 戒烟教练建议",
-                value = if (lang == AppLanguage.EN) "Tap to Refresh" else "点击刷新",
+                title = AppStrings.get("ai_config_title", lang),
+                subtitle = channelSummary,
+                value = if (aiConfig.enabled) (if (lang == AppLanguage.EN) "Custom" else "自定义") else (if (lang == AppLanguage.EN) "Standard" else "系统预设"),
                 icon = Icons.Rounded.AutoAwesome,
                 iconBgColor = Color(0xFF7E57C2).copy(alpha = 0.15f),
                 iconTintColor = Color(0xFF7E57C2),
-                onClick = { viewModel.fetchAiAdvice() }
+                onClick = onOpenAiConfig
             )
 
             HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
+            WeChatSettingsItem(
+                title = if (lang == AppLanguage.EN) "Refresh AI Advice Now" else "立即刷新教练建议",
+                value = if (lang == AppLanguage.EN) "Refresh" else "点击刷新",
+                icon = Icons.Rounded.Refresh,
+                iconBgColor = Color(0xFF00897B).copy(alpha = 0.15f),
+                iconTintColor = Color(0xFF00897B),
+                onClick = { viewModel.fetchAiAdvice(force = true) }
+            )
+        }
+
+        // Group 4: 关于 (About)
+        WeChatSettingsGroup(title = if (lang == AppLanguage.EN) "About App" else "关于软件") {
             WeChatSettingsItem(
                 title = AppStrings.get("about_title", lang),
                 subtitle = AppStrings.get("about_subtitle", lang),
@@ -2658,7 +2666,7 @@ fun SettingsScreen(viewModel: SmokingViewModel, stats: SmokingStats) {
                                         fontSize = 14.sp
                                     )
                                     Text(
-                                        text = if (lang == AppLanguage.EN) "Preview: Smoke Tracker Guard 12345" else "预览文字: Guard控烟助手 12345",
+                                        text = if (lang == AppLanguage.EN) "Preview: Smoking Tracker 12345" else "预览文字: 烟记 12345",
                                         fontFamily = fontItem.fontFamily,
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -3432,6 +3440,774 @@ fun AddCigaretteDialog(
                         }
                     ) {
                         Text(if (lang == AppLanguage.EN) "Save Brand" else "保存烟草", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ================= AI Coach UI & Formatting =================
+
+fun parseMarkdownToAnnotatedString(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        var cursor = 0
+        val regex = Regex("""\*\*(.*?)\*\*""")
+        val matches = regex.findAll(text)
+        for (match in matches) {
+            val range = match.range
+            if (range.first > cursor) {
+                append(text.substring(cursor, range.first))
+            }
+            pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+            append(match.groupValues[1])
+            pop()
+            cursor = range.last + 1
+        }
+        if (cursor < text.length) {
+            append(text.substring(cursor))
+        }
+    }
+}
+
+@Composable
+fun FormattedAdviceText(
+    text: String,
+    modifier: Modifier = Modifier,
+    alpha: Float = 1f
+) {
+    val lines = remember(text) { text.lines() }
+    Column(
+        modifier = modifier.alpha(alpha),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        lines.forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) {
+                Spacer(modifier = Modifier.height(2.dp))
+            } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+                val bulletContent = trimmed.substring(2).trim()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, top = 2.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        text = "•",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(end = 6.dp)
+                    )
+                    Text(
+                        text = parseMarkdownToAnnotatedString(bulletContent),
+                        fontSize = 13.5.sp,
+                        lineHeight = 20.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Text(
+                    text = parseMarkdownToAnnotatedString(trimmed),
+                    fontSize = 13.5.sp,
+                    lineHeight = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AiCoachCard(
+    aiAdviceState: AiAdviceState,
+    aiCustomConfig: AiCustomConfig,
+    lang: AppLanguage,
+    onRefresh: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val isLoading = aiAdviceState is AiAdviceState.Loading
+
+    val infiniteTransition = rememberInfiniteTransition()
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
+            repeatMode = RepeatMode.Restart
+        )
+    )
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = AppStrings.get("ai_advice_title", lang),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(top = 2.dp)
+                        ) {
+                            val activeResult = when (aiAdviceState) {
+                                is AiAdviceState.Success -> aiAdviceState.result
+                                is AiAdviceState.Loading -> aiAdviceState.previous
+                                is AiAdviceState.Error -> aiAdviceState.previous
+                                else -> null
+                            }
+                            if (activeResult != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (activeResult.source == AiAdviceSource.GEMINI_CLOUD) {
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+                                    } else {
+                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+                                    }
+                                ) {
+                                    Text(
+                                        text = if (activeResult.source == AiAdviceSource.GEMINI_CLOUD) {
+                                            "☁️ ${activeResult.modelName}"
+                                        } else {
+                                            "⚡ ${AppStrings.get("ai_source_local", lang)}"
+                                        },
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        color = if (activeResult.source == AiAdviceSource.GEMINI_CLOUD) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onSecondaryContainer
+                                        }
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Text(
+                                        text = if (lang == AppLanguage.EN) activeResult.persona.labelEn else activeResult.persona.labelZh.substringBefore(" "),
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = if (aiCustomConfig.enabled) "☁️ 自定义在线通道" else "⚡ 智能引擎就绪",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Action buttons
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Tune,
+                            contentDescription = AppStrings.get("ai_config_title", lang),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onRefresh,
+                        enabled = !isLoading,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = if (lang == AppLanguage.EN) "Refresh AI Advice" else "刷新 AI 建议",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .size(18.dp)
+                                .then(if (isLoading) Modifier.rotate(rotation) else Modifier)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Body
+            when (aiAdviceState) {
+                is AiAdviceState.Loading -> {
+                    if (aiAdviceState.previous != null) {
+                        Column {
+                            LinearProgressIndicator(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = AppStrings.get("ai_status_refreshing", lang),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            FormattedAdviceText(
+                                text = aiAdviceState.previous.advice,
+                                alpha = 0.55f
+                            )
+                        }
+                    } else {
+                        Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = AppStrings.get("ai_advice_loading", lang),
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.9f)
+                                    .height(12.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.7f)
+                                    .height(12.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                            )
+                        }
+                    }
+                }
+
+                is AiAdviceState.Success -> {
+                    Column {
+                        FormattedAdviceText(text = aiAdviceState.result.advice)
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                            thickness = 0.8.dp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val timeStr = remember(aiAdviceState.result.timestamp) {
+                                SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(aiAdviceState.result.timestamp))
+                            }
+                            Text(
+                                text = String.format(AppStrings.get("ai_updated_at", lang), timeStr),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(aiAdviceState.result.advice))
+                                        Toast.makeText(context, AppStrings.get("ai_copied_toast", lang), Toast.LENGTH_SHORT).show()
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.ContentCopy,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (lang == AppLanguage.EN) "Copy" else "复制建议",
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                is AiAdviceState.Error -> {
+                    Column {
+                        if (aiAdviceState.previous != null) {
+                            FormattedAdviceText(text = aiAdviceState.previous.advice, alpha = 0.7f)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = aiAdviceState.error,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                TextButton(
+                                    onClick = onRefresh,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(AppStrings.get("ai_retry_btn", lang), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                else -> {}
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AiConfigDialog(
+    currentConfig: AiCustomConfig,
+    lang: AppLanguage,
+    onDismiss: () -> Unit,
+    onSave: (AiCustomConfig) -> Unit,
+    onReset: () -> Unit,
+    onTestConnection: suspend (apiKey: String, baseUrl: String, model: String) -> Result<String>
+) {
+    var enabled by remember { mutableStateOf(currentConfig.enabled) }
+    var apiKey by remember { mutableStateOf(currentConfig.apiKey) }
+    var showApiKey by remember { mutableStateOf(false) }
+    var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
+    var modelName by remember { mutableStateOf(currentConfig.modelName) }
+    var persona by remember { mutableStateOf(currentConfig.persona) }
+
+    val presetModels = listOf("gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite-preview")
+    var isCustomModel by remember { mutableStateOf(currentConfig.modelName !in presetModels) }
+
+    val scope = rememberCoroutineScope()
+    var isTesting by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf<String?>(null) }
+    var testSuccess by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Tune,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = AppStrings.get("ai_config_title", lang),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = AppStrings.get("ai_config_subtitle", lang),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Rounded.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Toggle Switch Card
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = AppStrings.get("ai_custom_toggle", lang),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = AppStrings.get("ai_custom_toggle_desc", lang),
+                                fontSize = 11.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 16.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = enabled,
+                            onCheckedChange = { enabled = it }
+                        )
+                    }
+                }
+
+                if (!enabled) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = if (lang == AppLanguage.EN) {
+                                    "Using system default key (if provided) or smart offline fallback heuristics. Enable the toggle above to customize."
+                                } else {
+                                    "当前通道使用系统环境变量预设或离线智能保底引擎。开启上方开关即可完全自定义 API Key、自定义反向代理地址、大模型与教练人设风格。"
+                                },
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                } else {
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // API Key Field
+                    Text(
+                        text = AppStrings.get("ai_api_key_label", lang),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = { apiKey = it },
+                        placeholder = { Text(AppStrings.get("ai_api_key_hint", lang), fontSize = 12.sp) },
+                        visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showApiKey = !showApiKey }) {
+                                Icon(
+                                    imageVector = if (showApiKey) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Base URL Field
+                    Text(
+                        text = AppStrings.get("ai_base_url_label", lang),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = baseUrl,
+                        onValueChange = { baseUrl = it },
+                        placeholder = { Text(AppStrings.get("ai_base_url_hint", lang), fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        SuggestionChip(
+                            onClick = { baseUrl = RetrofitClient.DEFAULT_BASE_URL },
+                            label = { Text("官方 Google API", fontSize = 11.sp) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Model Selection
+                    Text(
+                        text = AppStrings.get("ai_model_label", lang),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        presetModels.forEach { model ->
+                            FilterChip(
+                                selected = (!isCustomModel && modelName == model),
+                                onClick = {
+                                    isCustomModel = false
+                                    modelName = model
+                                },
+                                label = {
+                                    Text(
+                                        when (model) {
+                                            "gemini-3.5-flash" -> "3.5 Flash (推荐)"
+                                            "gemini-3.1-pro-preview" -> "3.1 Pro (深度推理)"
+                                            "gemini-3.1-flash-lite-preview" -> "3.1 Flash Lite"
+                                            else -> model
+                                        },
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            )
+                        }
+                        FilterChip(
+                            selected = isCustomModel,
+                            onClick = { isCustomModel = true },
+                            label = { Text(if (lang == AppLanguage.EN) "Custom..." else "自定义...", fontSize = 12.sp) }
+                        )
+                    }
+                    if (isCustomModel) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedTextField(
+                            value = modelName,
+                            onValueChange = { modelName = it },
+                            placeholder = { Text("例如: gemini-3.5-flash", fontSize = 12.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Persona Selection
+                    Text(
+                        text = AppStrings.get("ai_persona_label", lang),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AiCoachPersona.values().forEach { p ->
+                            FilterChip(
+                                selected = (persona == p),
+                                onClick = { persona = p },
+                                label = { Text(if (lang == AppLanguage.EN) p.labelEn else p.labelZh, fontSize = 12.sp) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Test connection button
+                    OutlinedButton(
+                        onClick = {
+                            isTesting = true
+                            testResult = null
+                            scope.launch {
+                                val res = onTestConnection(apiKey, baseUrl, modelName)
+                                isTesting = false
+                                res.onSuccess { msg ->
+                                    testSuccess = true
+                                    testResult = msg
+                                }.onFailure { err ->
+                                    testSuccess = false
+                                    testResult = err.message
+                                }
+                            }
+                        },
+                        enabled = !isTesting,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        if (isTesting) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(AppStrings.get("ai_test_testing", lang), fontSize = 13.sp)
+                        } else {
+                            Icon(Icons.Rounded.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(AppStrings.get("ai_test_btn", lang), fontSize = 13.sp)
+                        }
+                    }
+
+                    // Test result banner
+                    testResult?.let { msg ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (testSuccess) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (testSuccess) Icons.Rounded.CheckCircle else Icons.Rounded.Error,
+                                    contentDescription = null,
+                                    tint = if (testSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = msg,
+                                    fontSize = 12.sp,
+                                    color = if (testSuccess) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Bottom Action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onReset) {
+                        Text(AppStrings.get("ai_reset_btn", lang), fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = onDismiss) {
+                            Text(AppStrings.get("cancel", lang), fontSize = 13.sp)
+                        }
+                        Button(
+                            onClick = {
+                                onSave(
+                                    AiCustomConfig(
+                                        enabled = enabled,
+                                        apiKey = apiKey.trim(),
+                                        baseUrl = baseUrl.trim().ifBlank { RetrofitClient.DEFAULT_BASE_URL },
+                                        modelName = modelName.trim().ifBlank { "gemini-3.5-flash" },
+                                        persona = persona
+                                    )
+                                )
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(AppStrings.get("ai_save_btn", lang), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

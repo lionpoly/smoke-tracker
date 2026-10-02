@@ -21,6 +21,9 @@ import com.example.ui.i18n.AppLanguage
 import com.example.ui.i18n.AppThemeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -79,12 +82,61 @@ enum class CigaretteSortOption(val code: String, val labelKey: String) {
     PRICE_DESC("PRICE_DESC", "sort_price_desc")
 }
 
+enum class AiAdviceSource(val labelZh: String, val labelEn: String) {
+    GEMINI_CLOUD("Gemini 云端", "Gemini Cloud"),
+    LOCAL_FALLBACK("离线保底", "Local Fallback")
+}
+
+enum class AiCoachPersona(
+    val code: String,
+    val labelZh: String,
+    val labelEn: String,
+    val promptInstruction: String
+) {
+    WARM(
+        "warm",
+        "温暖同理心 (推荐)",
+        "Empathetic & Warm",
+        "以温暖、包容、充满同理心且具鼓励性的健康教练口吻，肯定用户的微小进步与自律，用关怀方式提醒控烟，严禁生硬说教或指责。"
+    ),
+    STRICT(
+        "strict",
+        "自律严厉型",
+        "Strict & Direct",
+        "以严肃、强调自律与健康的口吻，直面吸烟与超标危害，督促用户坚守承诺，给出坚定切实的控制要求和克制动作。"
+    ),
+    ANALYTICAL(
+        "analytical",
+        "理性数据型",
+        "Analytical & Objective",
+        "以客观、理性的健康数据分析师口吻，基于开销、自抽/社交烟比例及目标偏差进行逻辑归纳与习惯打断策略建议。"
+    )
+}
+
+data class AiAdviceResult(
+    val advice: String,
+    val source: AiAdviceSource,
+    val modelName: String,
+    val persona: AiCoachPersona = AiCoachPersona.WARM,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 sealed interface AiAdviceState {
     object Idle : AiAdviceState
-    object Loading : AiAdviceState
-    data class Success(val advice: String) : AiAdviceState
-    data class Error(val error: String) : AiAdviceState
+    data class Loading(val previous: AiAdviceResult? = null) : AiAdviceState
+    data class Success(val result: AiAdviceResult) : AiAdviceState {
+        val advice: String get() = result.advice
+    }
+    data class Error(val error: String, val previous: AiAdviceResult? = null) : AiAdviceState
 }
+
+data class AiCustomConfig(
+    val enabled: Boolean = false,
+    val apiKey: String = "",
+    val baseUrl: String = RetrofitClient.DEFAULT_BASE_URL,
+    val modelName: String = "gemini-3.5-flash",
+    val persona: AiCoachPersona = AiCoachPersona.WARM
+)
 
 enum class TrendTimeRange(val labelZh: String, val labelEn: String) {
     LAST_7_DAYS("近7天", "7 Days"),
@@ -210,6 +262,50 @@ class SmokingViewModel(
 
     private val _aiAdviceState = MutableStateFlow<AiAdviceState>(AiAdviceState.Idle)
     val aiAdviceState: StateFlow<AiAdviceState> = _aiAdviceState
+
+    val aiCustomConfig = MutableStateFlow(AiCustomConfig())
+
+    fun updateAiConfig(config: AiCustomConfig) {
+        aiCustomConfig.value = config
+        context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)?.edit()?.apply {
+            putBoolean("ai_custom_enabled", config.enabled)
+            putString("ai_custom_api_key", config.apiKey)
+            putString("ai_custom_base_url", config.baseUrl)
+            putString("ai_custom_model_name", config.modelName)
+            putString("ai_custom_persona", config.persona.code)
+            apply()
+        }
+        fetchAiAdvice(force = true)
+    }
+
+    fun resetAiConfig() {
+        val defaultConfig = AiCustomConfig()
+        updateAiConfig(defaultConfig)
+    }
+
+    suspend fun testAiConnection(apiKey: String, baseUrl: String, model: String): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val keyToUse = if (apiKey.isNotBlank()) apiKey.trim() else BuildConfig.GEMINI_API_KEY
+                if (keyToUse.isBlank() || keyToUse == "MY_GEMINI_API_KEY") {
+                    return@withContext Result.failure(Exception("请先填写有效的 API Key"))
+                }
+                val targetBaseUrl = if (baseUrl.isNotBlank()) baseUrl.trim() else RetrofitClient.DEFAULT_BASE_URL
+                val targetModel = if (model.isNotBlank()) model.trim() else "gemini-3.5-flash"
+                val testService = RetrofitClient.getGeminiService(targetBaseUrl)
+                val startTime = System.currentTimeMillis()
+                val request = GenerateContentRequest(
+                    contents = listOf(Content(parts = listOf(Part(text = "Hello! Please reply with 'OK'.")))),
+                )
+                val response = testService.generateContent(targetModel, keyToUse, request)
+                val elapsed = System.currentTimeMillis() - startTime
+                val reply = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
+                Result.success("连通成功！耗时 ${elapsed}ms，模型返回: $reply")
+            } catch (e: Exception) {
+                Result.failure(Exception("连接失败: ${e.localizedMessage ?: e.message}"))
+            }
+        }
+    }
 
     val selectedTimeRange = MutableStateFlow(TrendTimeRange.LAST_7_DAYS)
     val selectedChartType = MutableStateFlow(ChartType.BAR)
@@ -407,6 +503,20 @@ class SmokingViewModel(
             val currencyCode = prefs.getString("currency_code", AppCurrency.CNY.code) ?: AppCurrency.CNY.code
             val fontCode = prefs.getString("font_family", AppFontFamily.DEFAULT.code) ?: AppFontFamily.DEFAULT.code
             val maxInterval = prefs.getInt("max_interval_hours", 6)
+
+            val aiCustomEnabled = prefs.getBoolean("ai_custom_enabled", false)
+            val aiCustomApiKey = prefs.getString("ai_custom_api_key", "") ?: ""
+            val aiCustomBaseUrl = prefs.getString("ai_custom_base_url", RetrofitClient.DEFAULT_BASE_URL) ?: RetrofitClient.DEFAULT_BASE_URL
+            val aiCustomModel = prefs.getString("ai_custom_model_name", "gemini-3.5-flash") ?: "gemini-3.5-flash"
+            val aiCustomPersonaCode = prefs.getString("ai_custom_persona", "warm") ?: "warm"
+            val persona = AiCoachPersona.values().firstOrNull { it.code == aiCustomPersonaCode } ?: AiCoachPersona.WARM
+            aiCustomConfig.value = AiCustomConfig(
+                enabled = aiCustomEnabled,
+                apiKey = aiCustomApiKey,
+                baseUrl = aiCustomBaseUrl,
+                modelName = aiCustomModel,
+                persona = persona
+            )
 
             appLanguage.value = AppLanguage.values().firstOrNull { it.code == langCode } ?: AppLanguage.ZH
             appThemeMode.value = AppThemeMode.values().firstOrNull { it.code == themeCode } ?: AppThemeMode.SYSTEM
@@ -985,18 +1095,35 @@ class SmokingViewModel(
     }
 
     // Gemini Smart Advice call
-    fun fetchAiAdvice() {
-        _aiAdviceState.value = AiAdviceState.Loading
-        viewModelScope.launch {
+    private var adviceJob: Job? = null
+
+    fun fetchAiAdvice(force: Boolean = false) {
+        adviceJob?.cancel()
+        val previousResult = when (val s = _aiAdviceState.value) {
+            is AiAdviceState.Success -> s.result
+            is AiAdviceState.Loading -> s.previous
+            is AiAdviceState.Error -> s.previous
+            else -> null
+        }
+        _aiAdviceState.value = AiAdviceState.Loading(previousResult)
+
+        adviceJob = viewModelScope.launch {
             try {
+                if (!force) {
+                    delay(500)
+                }
                 val currentStats = stats.value
                 val trend = trendData.value
                 val totalSelf7Days = trend.sumOf { it.selfCount }
                 val totalShared7Days = trend.sumOf { it.sharedCount }
                 val totalReceived7Days = trend.sumOf { it.receivedCount }
 
+                val config = aiCustomConfig.value
+                val persona = config.persona
+
                 val prompt = """
-                    你是一位专业且充满同理心的戒烟健康教练。请根据用户的以下吸烟数据，生成一份有洞察力、温暖且高度个性化的健康提醒和戒烟建议：
+                    你是一位专业且充满同理心的戒烟健康教练。你的指导风格要求：【${persona.labelZh} - ${persona.promptInstruction}】。
+                    请根据用户的以下真实吸烟数据，生成一份有洞察力、温暖且高度个性化的健康提醒和戒烟建议：
                     
                     【今日吸烟统计】
                     - 自购自抽：${currentStats.todaySelfCount} 支
@@ -1005,9 +1132,9 @@ class SmokingViewModel(
                     - 今日花费：${String.format(Locale.getDefault(), "%.2f", currentStats.todayCost)} 元
                     
                     【近期统计】
-                    - 自抽总数：$totalSelf7Days 支
-                    - 给他人递烟：$totalShared7Days 支
-                    - 接他人递烟：$totalReceived7Days 支
+                    - 近7天自抽总数：$totalSelf7Days 支
+                    - 近7天给他人递烟：$totalShared7Days 支
+                    - 近7天接他人递烟：$totalReceived7Days 支
                     - 近期支出：${String.format(Locale.getDefault(), "%.2f", currentStats.weekCost)} 元
                     
                     【当前戒烟目标】
@@ -1017,42 +1144,95 @@ class SmokingViewModel(
                     【健康提醒需求】
                     1. 简短总结今日烟瘾趋势。分析自抽、社交递烟与社交接烟（他人递烟）的特点；
                     2. 提供 2 条实用的、根据今天数据定制的戒烟与社交控烟小贴士；
-                    3. 给出温馨鼓励：字数在 150 字以内，简明扼要，分段清晰，使用友好和鼓舞人心的 emoji！
+                    3. 给出贴切教练风格的鼓励：字数在 150 字以内，简明扼要，分段清晰，使用恰当的 emoji！
                 """.trimIndent()
 
-                val responseText = withContext(Dispatchers.IO) {
-                    val apiKey = BuildConfig.GEMINI_API_KEY
-                    if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-                        getMockAdvice(currentStats)
+                val (adviceText, source, modelUsed) = withContext(Dispatchers.IO) {
+                    val effectiveKey = if (config.enabled && config.apiKey.isNotBlank()) {
+                        config.apiKey.trim()
                     } else {
-                        val request = GenerateContentRequest(
-                            contents = listOf(Content(parts = listOf(Part(text = prompt))))
-                        )
-                        val response = RetrofitClient.geminiService.generateContent(apiKey, request)
-                        response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text 
-                            ?: getMockAdvice(currentStats)
+                        BuildConfig.GEMINI_API_KEY
+                    }
+                    val effectiveBaseUrl = if (config.enabled && config.baseUrl.isNotBlank()) {
+                        config.baseUrl.trim()
+                    } else {
+                        RetrofitClient.DEFAULT_BASE_URL
+                    }
+                    val effectiveModel = if (config.enabled && config.modelName.isNotBlank()) {
+                        config.modelName.trim()
+                    } else {
+                        "gemini-3.5-flash"
+                    }
+
+                    if (effectiveKey.isEmpty() || effectiveKey == "MY_GEMINI_API_KEY") {
+                        Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "本地规则引擎")
+                    } else {
+                        try {
+                            val request = GenerateContentRequest(
+                                contents = listOf(Content(parts = listOf(Part(text = prompt))))
+                            )
+                            val service = RetrofitClient.getGeminiService(effectiveBaseUrl)
+                            val response = service.generateContent(effectiveModel, effectiveKey, request)
+                            val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                            if (!text.isNullOrBlank()) {
+                                Triple(text.trim(), AiAdviceSource.GEMINI_CLOUD, effectiveModel)
+                            } else {
+                                Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "本地规则引擎")
+                            }
+                        } catch (e: Exception) {
+                            Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "离线保底")
+                        }
                     }
                 }
-                _aiAdviceState.value = AiAdviceState.Success(responseText)
+
+                val result = AiAdviceResult(
+                    advice = adviceText,
+                    source = source,
+                    modelName = modelUsed,
+                    persona = persona,
+                    timestamp = System.currentTimeMillis()
+                )
+                _aiAdviceState.value = AiAdviceState.Success(result)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _aiAdviceState.value = AiAdviceState.Error("获取健康建议失败: ${e.localizedMessage}")
+                _aiAdviceState.value = AiAdviceState.Error("获取健康建议失败: ${e.localizedMessage ?: e.message}", previousResult)
             }
         }
     }
 
-    private fun getMockAdvice(stats: SmokingStats): String {
-        return if (stats.todaySelfCount == 0 && stats.todayReceivedCount == 0) {
-            "🌟 **干得太漂亮了！** 截至目前，你今天还没有抽过一支烟！你的肺正在欢呼，身体正在净化。继续保持！💪🏼\n\n💡 **今日贴士**:\n- 烟瘾来袭时，尝试喝一口冰水或做 3 次深呼吸。\n- 社交递烟时多用口香糖递给对方，换种健康的社交方式。"
-        } else if (stats.isOverLimit) {
-            "⚠️ **今日温馨提醒**：你今天共抽了 ${stats.todayTotalCount} 支烟（自抽 ${stats.todaySelfCount} 支，接烟 ${stats.todayReceivedCount} 支），超出了 ${stats.currentGoalLimit} 支上限。不要灰心！调整呼吸，今晚就到此为止吧！🍀\n\n💡 **今日贴士**:\n- 面对他人递烟，学会礼貌拒绝：“最近在养肺，多谢好意啦！”\n- 社交场合多手里拿杯茶水，减少接烟手势习惯。"
-        } else {
-            "👍 **保持得不错！** 今天你自抽 ${stats.todaySelfCount} 支，接烟 ${stats.todayReceivedCount} 支，控制在 ${stats.currentGoalLimit} 支的目标范围之内。这是一次了不起的自律表现！✨\n\n💡 **今日贴士**:\n- 饭后用薄荷糖替代烟草，打断习惯性烟瘾。\n- 记录下每次成功克制烟瘾的瞬间，为你点赞！"
-        }
-    }
-
-    private suspend fun delay(ms: Long) {
-        withContext(Dispatchers.Default) {
-            kotlinx.coroutines.delay(ms)
+    private fun getMockAdvice(stats: SmokingStats, persona: AiCoachPersona = AiCoachPersona.WARM): String {
+        return when (persona) {
+            AiCoachPersona.STRICT -> {
+                if (stats.todaySelfCount == 0 && stats.todayReceivedCount == 0) {
+                    "🛡️ **严守防线！** 今日吸烟量为 0 支。烟瘾是一场意志力的持久战，不要在任何社交场合掉以轻心。继续坚守！🎯\n\n💡 **自律守则**:\n- 绝不抽第一口，不给大脑任何妥协让步的借口。\n- 遇到朋友递烟，直接且坚决拒绝，切勿半推半就。"
+                } else if (stats.isOverLimit) {
+                    "🚨 **警报超标！** 今日总吸烟数 ${stats.todayTotalCount} 支已突破目标上限 ${stats.currentGoalLimit} 支！放任只会让前面的努力付诸东流。立即停止！🛑\n\n💡 **行动指令**:\n- 今晚将烟盒彻底收起远离视线，立刻洗漱清口打断渴求。\n- 复盘超标场景：下次在相同诱因出现前提前离开现场。"
+                } else {
+                    "⚖️ **处于警戒线内。** 今日吸烟 ${stats.todayTotalCount} 支，虽然未超标，但自控仍需紧绷，绝不能在晚上松懈。保持克制！⚡\n\n💡 **自律守则**:\n- 无论他人如何劝烟，守住底线。\n- 烟瘾峰值一般仅持续3-5分钟，强制转移注意力即可度过。"
+                }
+            }
+            AiCoachPersona.ANALYTICAL -> {
+                if (stats.todaySelfCount == 0 && stats.todayReceivedCount == 0) {
+                    "📊 **数据模型评级: A+**\n今日吸烟 0 支，节省开销 ¥0.00，心率与一氧化碳水平持续回归基准值。健康收益曲线处于高位。✨\n\n💡 **分析建议**:\n- 维持低诱因环境，防止晚间波峰出现。\n- 持续记录无烟状态以巩固行为学正反馈闭环。"
+                } else if (stats.isOverLimit) {
+                    val excess = stats.todayTotalCount - stats.currentGoalLimit
+                    val rate = if (stats.currentGoalLimit > 0) ((stats.todayTotalCount.toDouble() / stats.currentGoalLimit - 1) * 100).toInt() else 100
+                    "📈 **指标偏离警告**\n今日摄入 ${stats.todayTotalCount} 支（自购 ${stats.todaySelfCount} 支 / 接烟 ${stats.todayReceivedCount} 支），超出限额 $excess 支 (+$rate%)。⚠️\n\n💡 **策略调整**:\n- 社交接烟占比较高时，需将'他人递烟'设定为阻断型条件反射触发点。\n- 计算吸烟财务开销累计值，设定强制惩罚性储蓄。"
+                } else {
+                    val rate = if (stats.currentGoalLimit > 0) ((stats.todayTotalCount.toDouble() / stats.currentGoalLimit) * 100).toInt() else 0
+                    "📉 **数据模型稳定**\n今日吸烟 ${stats.todayTotalCount} 支，目标达成率 $rate%，今日烟资 ¥${String.format(Locale.getDefault(), "%.2f", stats.todayCost)}。各指标在可控区间。👍\n\n💡 **分析建议**:\n- 监测高频吸烟时段（如饭后或午休），提前设定替代物阻断。\n- 逐步将每日上限由 ${stats.currentGoalLimit} 阶梯式递减至下一阶段目标。"
+                }
+            }
+            AiCoachPersona.WARM -> {
+                if (stats.todaySelfCount == 0 && stats.todayReceivedCount == 0) {
+                    "🌟 **干得太漂亮了！** 截至目前，你今天还没有抽过一支烟！你的肺正在欢呼，身体正在净化。继续保持！💪🏼\n\n💡 **今日贴士**:\n- 烟瘾来袭时，尝试喝一口冰水或做 3 次深呼吸。\n- 社交递烟时多用口香糖递给对方，换种温暖健康的社交方式。"
+                } else if (stats.isOverLimit) {
+                    "⚠️ **今日温馨提醒**：你今天共抽了 ${stats.todayTotalCount} 支烟（自抽 ${stats.todaySelfCount} 支，接烟 ${stats.todayReceivedCount} 支），超出了 ${stats.currentGoalLimit} 支上限。不要灰心！调整呼吸，今晚就到此为止吧！🍀\n\n💡 **今日贴士**:\n- 面对他人递烟，学会礼貌拒绝：“最近在养肺，多谢好意啦！”\n- 社交场合多手里拿杯茶水，减少接烟手势习惯。"
+                } else {
+                    "👍 **保持得不错！** 今天你自抽 ${stats.todaySelfCount} 支，接烟 ${stats.todayReceivedCount} 支，控制在 ${stats.currentGoalLimit} 支的目标范围之内。这是一次了不起的自律表现！✨\n\n💡 **今日贴士**:\n- 饭后用薄荷糖替代烟草，打断习惯性烟瘾。\n- 记录下每次成功克制烟瘾的瞬间，为你点赞！"
+                }
+            }
         }
     }
 }
