@@ -172,8 +172,8 @@ fun SmokingApp(viewModel: SmokingViewModel) {
                 viewModel.resetAiConfig()
                 showAiConfigDialog = false
             },
-            onTestConnection = { apiKey, baseUrl, model ->
-                viewModel.testAiConnection(apiKey, baseUrl, model)
+            onTestConnection = { protocol, apiKey, baseUrl, model ->
+                viewModel.testAiConnection(protocol, apiKey, baseUrl, model)
             }
         )
     }
@@ -3599,25 +3599,25 @@ fun AiCoachCard(
                             if (activeResult != null) {
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = if (activeResult.source == AiAdviceSource.GEMINI_CLOUD) {
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
-                                    } else {
-                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+                                    color = when (activeResult.source) {
+                                        AiAdviceSource.OPENAI_COMPATIBLE -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                                        AiAdviceSource.GEMINI_CLOUD -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f)
+                                        AiAdviceSource.LOCAL_FALLBACK -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f)
                                     }
                                 ) {
                                     Text(
-                                        text = if (activeResult.source == AiAdviceSource.GEMINI_CLOUD) {
-                                            "☁️ ${activeResult.modelName}"
-                                        } else {
-                                            "⚡ ${AppStrings.get("ai_source_local", lang)}"
+                                        text = when (activeResult.source) {
+                                            AiAdviceSource.OPENAI_COMPATIBLE -> "⚡ ${activeResult.modelName}"
+                                            AiAdviceSource.GEMINI_CLOUD -> "☁️ ${activeResult.modelName}"
+                                            AiAdviceSource.LOCAL_FALLBACK -> "🛡️ ${AppStrings.get("ai_source_local", lang)}"
                                         },
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        color = if (activeResult.source == AiAdviceSource.GEMINI_CLOUD) {
-                                            MaterialTheme.colorScheme.onPrimaryContainer
-                                        } else {
-                                            MaterialTheme.colorScheme.onSecondaryContainer
+                                        color = when (activeResult.source) {
+                                            AiAdviceSource.OPENAI_COMPATIBLE -> MaterialTheme.colorScheme.onPrimaryContainer
+                                            AiAdviceSource.GEMINI_CLOUD -> MaterialTheme.colorScheme.onTertiaryContainer
+                                            AiAdviceSource.LOCAL_FALLBACK -> MaterialTheme.colorScheme.onSecondaryContainer
                                         }
                                     )
                                 }
@@ -3634,7 +3634,7 @@ fun AiCoachCard(
                                 }
                             } else {
                                 Text(
-                                    text = if (aiCustomConfig.enabled) "☁️ 自定义在线通道" else "⚡ 智能引擎就绪",
+                                    text = if (aiCustomConfig.enabled) "⚡ ${aiCustomConfig.modelName} 通道就绪" else "🛡️ 离线智能引擎就绪",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                 )
@@ -3840,17 +3840,20 @@ fun AiConfigDialog(
     onDismiss: () -> Unit,
     onSave: (AiCustomConfig) -> Unit,
     onReset: () -> Unit,
-    onTestConnection: suspend (apiKey: String, baseUrl: String, model: String) -> Result<String>
+    onTestConnection: suspend (protocol: AiApiProtocol, apiKey: String, baseUrl: String, model: String) -> Result<String>
 ) {
     var enabled by remember { mutableStateOf(currentConfig.enabled) }
+    var protocol by remember { mutableStateOf(currentConfig.protocol) }
     var apiKey by remember { mutableStateOf(currentConfig.apiKey) }
     var showApiKey by remember { mutableStateOf(false) }
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var modelName by remember { mutableStateOf(currentConfig.modelName) }
     var persona by remember { mutableStateOf(currentConfig.persona) }
 
-    val presetModels = listOf("gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite-preview")
-    var isCustomModel by remember { mutableStateOf(currentConfig.modelName !in presetModels) }
+    val openAiPresetModels = listOf("deepseek-chat", "qwen-plus", "glm-4-flash", "gpt-4o-mini")
+    val geminiPresetModels = listOf("gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite-preview")
+    val currentPresetList = if (protocol == AiApiProtocol.OPENAI_COMPATIBLE) openAiPresetModels else geminiPresetModels
+    var isCustomModel by remember(protocol) { mutableStateOf(modelName !in currentPresetList) }
 
     val scope = rememberCoroutineScope()
     var isTesting by remember { mutableStateOf(false) }
@@ -3970,9 +3973,9 @@ fun AiConfigDialog(
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
                                 text = if (lang == AppLanguage.EN) {
-                                    "Using system default key (if provided) or smart offline fallback heuristics. Enable the toggle above to customize."
+                                    "When disabled, the app uses smart offline heuristics to provide coaching advice based on your smoking habits. Turn on the switch above to connect any OpenAI-compatible provider (DeepSeek, Qwen, GLM, OpenAI, etc.)."
                                 } else {
-                                    "当前通道使用系统环境变量预设或离线智能保底引擎。开启上方开关即可完全自定义 API Key、自定义反向代理地址、大模型与教练人设风格。"
+                                    "当前通道使用离线启发式规则引擎提供教练建议。开启上方开关即可自由接入任何兼容 OpenAI 格式的大模型厂商（DeepSeek、通义千问、智谱清言、Kimi、OpenAI、Ollama等，不限厂商）。"
                                 },
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp,
@@ -3982,6 +3985,139 @@ fun AiConfigDialog(
                     }
                 } else {
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    // Protocol Selection
+                    Text(
+                        text = AppStrings.get("ai_protocol_label", lang),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = (protocol == AiApiProtocol.OPENAI_COMPATIBLE),
+                            onClick = {
+                                protocol = AiApiProtocol.OPENAI_COMPATIBLE
+                                if (baseUrl.isBlank() || baseUrl == RetrofitClient.DEFAULT_BASE_URL) {
+                                    baseUrl = "https://api.deepseek.com/v1"
+                                }
+                                if (modelName.startsWith("gemini")) {
+                                    modelName = "deepseek-chat"
+                                    isCustomModel = false
+                                }
+                            },
+                            label = {
+                                Text(
+                                    text = if (lang == AppLanguage.EN) "OpenAI Compatible (Any Vendor)" else "OpenAI 兼容协议 (各大厂商通用)",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (protocol == AiApiProtocol.OPENAI_COMPATIBLE) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        )
+                        FilterChip(
+                            selected = (protocol == AiApiProtocol.GOOGLE_GEMINI),
+                            onClick = {
+                                protocol = AiApiProtocol.GOOGLE_GEMINI
+                                if (baseUrl.isBlank() || baseUrl.contains("deepseek") || baseUrl.contains("dashscope") || baseUrl.contains("openai.com")) {
+                                    baseUrl = RetrofitClient.DEFAULT_BASE_URL
+                                }
+                                if (!modelName.startsWith("gemini")) {
+                                    modelName = "gemini-3.5-flash"
+                                    isCustomModel = false
+                                }
+                            },
+                            label = {
+                                Text(
+                                    text = if (lang == AppLanguage.EN) "Google Gemini Native" else "Google Gemini 原生协议",
+                                    fontSize = 12.sp
+                                )
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Mainstream presets quick chips
+                    Text(
+                        text = AppStrings.get("ai_vendor_presets", lang),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (protocol == AiApiProtocol.OPENAI_COMPATIBLE) {
+                            SuggestionChip(
+                                onClick = {
+                                    baseUrl = "https://api.deepseek.com/v1"
+                                    modelName = "deepseek-chat"
+                                    isCustomModel = false
+                                },
+                                label = { Text("DeepSeek 官方", fontSize = 11.5.sp) }
+                            )
+                            SuggestionChip(
+                                onClick = {
+                                    baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                                    modelName = "qwen-plus"
+                                    isCustomModel = false
+                                },
+                                label = { Text("阿里通义千问", fontSize = 11.5.sp) }
+                            )
+                            SuggestionChip(
+                                onClick = {
+                                    baseUrl = "https://open.bigmodel.cn/api/paas/v4"
+                                    modelName = "glm-4-flash"
+                                    isCustomModel = false
+                                },
+                                label = { Text("智谱 GLM-4", fontSize = 11.5.sp) }
+                            )
+                            SuggestionChip(
+                                onClick = {
+                                    baseUrl = "https://api.openai.com/v1"
+                                    modelName = "gpt-4o-mini"
+                                    isCustomModel = false
+                                },
+                                label = { Text("OpenAI 官方", fontSize = 11.5.sp) }
+                            )
+                            SuggestionChip(
+                                onClick = {
+                                    baseUrl = "http://10.0.2.2:11434/v1"
+                                    modelName = "llama3"
+                                    isCustomModel = false
+                                },
+                                label = { Text("本地 Ollama", fontSize = 11.5.sp) }
+                            )
+                        } else {
+                            SuggestionChip(
+                                onClick = {
+                                    baseUrl = RetrofitClient.DEFAULT_BASE_URL
+                                    modelName = "gemini-3.5-flash"
+                                    isCustomModel = false
+                                },
+                                label = { Text("Google 官方 3.5 Flash", fontSize = 11.5.sp) }
+                            )
+                            SuggestionChip(
+                                onClick = {
+                                    baseUrl = RetrofitClient.DEFAULT_BASE_URL
+                                    modelName = "gemini-3.1-pro-preview"
+                                    isCustomModel = false
+                                },
+                                label = { Text("Google 官方 3.1 Pro", fontSize = 11.5.sp) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // API Key Field
                     Text(
@@ -4026,15 +4162,16 @@ fun AiConfigDialog(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     )
-                    Row(
-                        modifier = Modifier.padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        SuggestionChip(
-                            onClick = { baseUrl = RetrofitClient.DEFAULT_BASE_URL },
-                            label = { Text("官方 Google API", fontSize = 11.sp) }
-                        )
-                    }
+                    Text(
+                        text = if (protocol == AiApiProtocol.OPENAI_COMPATIBLE) {
+                            "💡 自动规范化追加 /v1/chat/completions，支持各厂商反向代理与中转"
+                        } else {
+                            "💡 Google 官方原生接口地址 (或经反代保持原生格式的端点)"
+                        },
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp, start = 4.dp)
+                    )
 
                     Spacer(modifier = Modifier.height(14.dp))
 
@@ -4051,7 +4188,7 @@ fun AiConfigDialog(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        presetModels.forEach { model ->
+                        currentPresetList.forEach { model ->
                             FilterChip(
                                 selected = (!isCustomModel && modelName == model),
                                 onClick = {
@@ -4061,6 +4198,10 @@ fun AiConfigDialog(
                                 label = {
                                     Text(
                                         when (model) {
+                                            "deepseek-chat" -> "DeepSeek Chat (V3)"
+                                            "qwen-plus" -> "通义千问 Plus"
+                                            "glm-4-flash" -> "GLM-4 Flash (极速)"
+                                            "gpt-4o-mini" -> "GPT-4o Mini"
                                             "gemini-3.5-flash" -> "3.5 Flash (推荐)"
                                             "gemini-3.1-pro-preview" -> "3.1 Pro (深度推理)"
                                             "gemini-3.1-flash-lite-preview" -> "3.1 Flash Lite"
@@ -4074,7 +4215,7 @@ fun AiConfigDialog(
                         FilterChip(
                             selected = isCustomModel,
                             onClick = { isCustomModel = true },
-                            label = { Text(if (lang == AppLanguage.EN) "Custom..." else "自定义...", fontSize = 12.sp) }
+                            label = { Text(if (lang == AppLanguage.EN) "Custom..." else "自定义模型...", fontSize = 12.sp) }
                         )
                     }
                     if (isCustomModel) {
@@ -4082,7 +4223,16 @@ fun AiConfigDialog(
                         OutlinedTextField(
                             value = modelName,
                             onValueChange = { modelName = it },
-                            placeholder = { Text("例如: gemini-3.5-flash", fontSize = 12.sp) },
+                            placeholder = {
+                                Text(
+                                    if (protocol == AiApiProtocol.OPENAI_COMPATIBLE) {
+                                        "输入任意兼容模型名 (例如: deepseek-reasoner, qwen-max, kimi-k1.5)"
+                                    } else {
+                                        "例如: gemini-3.5-flash"
+                                    },
+                                    fontSize = 12.sp
+                                )
+                            },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
@@ -4121,7 +4271,7 @@ fun AiConfigDialog(
                             isTesting = true
                             testResult = null
                             scope.launch {
-                                val res = onTestConnection(apiKey, baseUrl, modelName)
+                                val res = onTestConnection(protocol, apiKey, baseUrl, modelName)
                                 isTesting = false
                                 res.onSuccess { msg ->
                                     testSuccess = true
@@ -4197,9 +4347,14 @@ fun AiConfigDialog(
                                 onSave(
                                     AiCustomConfig(
                                         enabled = enabled,
+                                        protocol = protocol,
                                         apiKey = apiKey.trim(),
-                                        baseUrl = baseUrl.trim().ifBlank { RetrofitClient.DEFAULT_BASE_URL },
-                                        modelName = modelName.trim().ifBlank { "gemini-3.5-flash" },
+                                        baseUrl = baseUrl.trim().ifBlank {
+                                            if (protocol == AiApiProtocol.OPENAI_COMPATIBLE) "https://api.deepseek.com/v1" else RetrofitClient.DEFAULT_BASE_URL
+                                        },
+                                        modelName = modelName.trim().ifBlank {
+                                            if (protocol == AiApiProtocol.OPENAI_COMPATIBLE) "deepseek-chat" else "gemini-3.5-flash"
+                                        },
                                         persona = persona
                                     )
                                 )

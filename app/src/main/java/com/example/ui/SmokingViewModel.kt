@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
 import com.example.data.api.Content
 import com.example.data.api.GenerateContentRequest
+import com.example.data.api.OpenAiChatMessage
+import com.example.data.api.OpenAiChatRequest
 import com.example.data.api.Part
 import com.example.data.api.RetrofitClient
 import com.example.data.db.AppDatabase
@@ -82,7 +84,13 @@ enum class CigaretteSortOption(val code: String, val labelKey: String) {
     PRICE_DESC("PRICE_DESC", "sort_price_desc")
 }
 
+enum class AiApiProtocol(val code: String, val labelZh: String, val labelEn: String) {
+    OPENAI_COMPATIBLE("openai", "OpenAI 兼容协议 (支持各大厂商)", "OpenAI Compatible"),
+    GOOGLE_GEMINI("gemini", "Google Gemini 原生协议", "Google Gemini")
+}
+
 enum class AiAdviceSource(val labelZh: String, val labelEn: String) {
+    OPENAI_COMPATIBLE("在线大模型", "Cloud LLM"),
     GEMINI_CLOUD("Gemini 云端", "Gemini Cloud"),
     LOCAL_FALLBACK("离线保底", "Local Fallback")
 }
@@ -132,9 +140,10 @@ sealed interface AiAdviceState {
 
 data class AiCustomConfig(
     val enabled: Boolean = false,
+    val protocol: AiApiProtocol = AiApiProtocol.OPENAI_COMPATIBLE,
     val apiKey: String = "",
-    val baseUrl: String = RetrofitClient.DEFAULT_BASE_URL,
-    val modelName: String = "gemini-3.5-flash",
+    val baseUrl: String = "https://api.deepseek.com/v1",
+    val modelName: String = "deepseek-chat",
     val persona: AiCoachPersona = AiCoachPersona.WARM
 )
 
@@ -269,6 +278,7 @@ class SmokingViewModel(
         aiCustomConfig.value = config
         context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)?.edit()?.apply {
             putBoolean("ai_custom_enabled", config.enabled)
+            putString("ai_custom_protocol", config.protocol.code)
             putString("ai_custom_api_key", config.apiKey)
             putString("ai_custom_base_url", config.baseUrl)
             putString("ai_custom_model_name", config.modelName)
@@ -283,24 +293,55 @@ class SmokingViewModel(
         updateAiConfig(defaultConfig)
     }
 
-    suspend fun testAiConnection(apiKey: String, baseUrl: String, model: String): Result<String> {
+    suspend fun testAiConnection(
+        protocol: AiApiProtocol,
+        apiKey: String,
+        baseUrl: String,
+        model: String
+    ): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                val keyToUse = if (apiKey.isNotBlank()) apiKey.trim() else BuildConfig.GEMINI_API_KEY
-                if (keyToUse.isBlank() || keyToUse == "MY_GEMINI_API_KEY") {
-                    return@withContext Result.failure(Exception("请先填写有效的 API Key"))
+                if (protocol == AiApiProtocol.OPENAI_COMPATIBLE) {
+                    val keyToUse = apiKey.trim()
+                    if (keyToUse.isBlank()) {
+                        return@withContext Result.failure(Exception("请先填写有效的 API Key"))
+                    }
+                    val targetUrl = RetrofitClient.normalizeOpenAiUrl(baseUrl.ifBlank { "https://api.deepseek.com/v1" })
+                    val targetModel = model.ifBlank { "deepseek-chat" }.trim()
+                    val bearerAuth = if (keyToUse.startsWith("Bearer ", ignoreCase = true)) keyToUse else "Bearer $keyToUse"
+                    val startTime = System.currentTimeMillis()
+                    val req = OpenAiChatRequest(
+                        model = targetModel,
+                        messages = listOf(
+                            OpenAiChatMessage(role = "user", content = "Hello! Please reply 'OK' only.")
+                        )
+                    )
+                    val resp = RetrofitClient.openAiService.chatCompletions(targetUrl, bearerAuth, req)
+                    val elapsed = System.currentTimeMillis() - startTime
+                    val reply = resp.choices?.firstOrNull()?.message?.content?.trim()
+                    if (!reply.isNullOrBlank()) {
+                        Result.success("连通成功！耗时 ${elapsed}ms，模型返回: $reply")
+                    } else {
+                        val err = resp.error?.message ?: "接口未返回有效内容，请检查模型名称或端点地址"
+                        Result.failure(Exception(err))
+                    }
+                } else {
+                    val keyToUse = if (apiKey.isNotBlank()) apiKey.trim() else BuildConfig.GEMINI_API_KEY
+                    if (keyToUse.isBlank() || keyToUse == "MY_GEMINI_API_KEY") {
+                        return@withContext Result.failure(Exception("请先填写有效的 Gemini API Key"))
+                    }
+                    val targetBaseUrl = if (baseUrl.isNotBlank()) baseUrl.trim() else RetrofitClient.DEFAULT_BASE_URL
+                    val targetModel = if (model.isNotBlank()) model.trim() else "gemini-3.5-flash"
+                    val testService = RetrofitClient.getGeminiService(targetBaseUrl)
+                    val startTime = System.currentTimeMillis()
+                    val request = GenerateContentRequest(
+                        contents = listOf(Content(parts = listOf(Part(text = "Hello! Please reply with 'OK'.")))),
+                    )
+                    val response = testService.generateContent(targetModel, keyToUse, request)
+                    val elapsed = System.currentTimeMillis() - startTime
+                    val reply = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
+                    Result.success("连通成功！耗时 ${elapsed}ms，模型返回: $reply")
                 }
-                val targetBaseUrl = if (baseUrl.isNotBlank()) baseUrl.trim() else RetrofitClient.DEFAULT_BASE_URL
-                val targetModel = if (model.isNotBlank()) model.trim() else "gemini-3.5-flash"
-                val testService = RetrofitClient.getGeminiService(targetBaseUrl)
-                val startTime = System.currentTimeMillis()
-                val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = listOf(Part(text = "Hello! Please reply with 'OK'.")))),
-                )
-                val response = testService.generateContent(targetModel, keyToUse, request)
-                val elapsed = System.currentTimeMillis() - startTime
-                val reply = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
-                Result.success("连通成功！耗时 ${elapsed}ms，模型返回: $reply")
             } catch (e: Exception) {
                 Result.failure(Exception("连接失败: ${e.localizedMessage ?: e.message}"))
             }
@@ -505,13 +546,18 @@ class SmokingViewModel(
             val maxInterval = prefs.getInt("max_interval_hours", 6)
 
             val aiCustomEnabled = prefs.getBoolean("ai_custom_enabled", false)
+            val aiCustomProtocolCode = prefs.getString("ai_custom_protocol", "openai") ?: "openai"
+            val aiProtocol = AiApiProtocol.values().firstOrNull { it.code == aiCustomProtocolCode } ?: AiApiProtocol.OPENAI_COMPATIBLE
             val aiCustomApiKey = prefs.getString("ai_custom_api_key", "") ?: ""
-            val aiCustomBaseUrl = prefs.getString("ai_custom_base_url", RetrofitClient.DEFAULT_BASE_URL) ?: RetrofitClient.DEFAULT_BASE_URL
-            val aiCustomModel = prefs.getString("ai_custom_model_name", "gemini-3.5-flash") ?: "gemini-3.5-flash"
+            val aiCustomBaseUrl = prefs.getString("ai_custom_base_url", if (aiProtocol == AiApiProtocol.OPENAI_COMPATIBLE) "https://api.deepseek.com/v1" else RetrofitClient.DEFAULT_BASE_URL)
+                ?: "https://api.deepseek.com/v1"
+            val aiCustomModel = prefs.getString("ai_custom_model_name", if (aiProtocol == AiApiProtocol.OPENAI_COMPATIBLE) "deepseek-chat" else "gemini-3.5-flash")
+                ?: "deepseek-chat"
             val aiCustomPersonaCode = prefs.getString("ai_custom_persona", "warm") ?: "warm"
             val persona = AiCoachPersona.values().firstOrNull { it.code == aiCustomPersonaCode } ?: AiCoachPersona.WARM
             aiCustomConfig.value = AiCustomConfig(
                 enabled = aiCustomEnabled,
+                protocol = aiProtocol,
                 apiKey = aiCustomApiKey,
                 baseUrl = aiCustomBaseUrl,
                 modelName = aiCustomModel,
@@ -1148,39 +1194,83 @@ class SmokingViewModel(
                 """.trimIndent()
 
                 val (adviceText, source, modelUsed) = withContext(Dispatchers.IO) {
-                    val effectiveKey = if (config.enabled && config.apiKey.isNotBlank()) {
-                        config.apiKey.trim()
-                    } else {
-                        BuildConfig.GEMINI_API_KEY
-                    }
-                    val effectiveBaseUrl = if (config.enabled && config.baseUrl.isNotBlank()) {
-                        config.baseUrl.trim()
-                    } else {
-                        RetrofitClient.DEFAULT_BASE_URL
-                    }
-                    val effectiveModel = if (config.enabled && config.modelName.isNotBlank()) {
-                        config.modelName.trim()
-                    } else {
-                        "gemini-3.5-flash"
-                    }
+                    if (config.enabled) {
+                        if (config.protocol == AiApiProtocol.OPENAI_COMPATIBLE) {
+                            val effectiveKey = config.apiKey.trim()
+                            val effectiveBaseUrl = config.baseUrl.trim().ifBlank { "https://api.deepseek.com/v1" }
+                            val effectiveModel = config.modelName.trim().ifBlank { "deepseek-chat" }
 
-                    if (effectiveKey.isEmpty() || effectiveKey == "MY_GEMINI_API_KEY") {
-                        Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "本地规则引擎")
-                    } else {
-                        try {
-                            val request = GenerateContentRequest(
-                                contents = listOf(Content(parts = listOf(Part(text = prompt))))
-                            )
-                            val service = RetrofitClient.getGeminiService(effectiveBaseUrl)
-                            val response = service.generateContent(effectiveModel, effectiveKey, request)
-                            val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                            if (!text.isNullOrBlank()) {
-                                Triple(text.trim(), AiAdviceSource.GEMINI_CLOUD, effectiveModel)
-                            } else {
+                            if (effectiveKey.isBlank()) {
                                 Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "本地规则引擎")
+                            } else {
+                                try {
+                                    val targetUrl = RetrofitClient.normalizeOpenAiUrl(effectiveBaseUrl)
+                                    val bearerAuth = if (effectiveKey.startsWith("Bearer ", ignoreCase = true)) effectiveKey else "Bearer $effectiveKey"
+                                    val req = OpenAiChatRequest(
+                                        model = effectiveModel,
+                                        messages = listOf(
+                                            OpenAiChatMessage(role = "system", content = "你是一位专业且充满同理心的戒烟健康教练。你的指导风格要求：【${persona.labelZh} - ${persona.promptInstruction}】。"),
+                                            OpenAiChatMessage(role = "user", content = prompt)
+                                        )
+                                    )
+                                    val resp = RetrofitClient.openAiService.chatCompletions(targetUrl, bearerAuth, req)
+                                    val reply = resp.choices?.firstOrNull()?.message?.content?.trim()
+                                    if (!reply.isNullOrBlank()) {
+                                        Triple(reply, AiAdviceSource.OPENAI_COMPATIBLE, effectiveModel)
+                                    } else {
+                                        Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "本地规则引擎")
+                                    }
+                                } catch (e: Exception) {
+                                    Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "离线保底")
+                                }
                             }
-                        } catch (e: Exception) {
-                            Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "离线保底")
+                        } else {
+                            // Custom Google Gemini protocol
+                            val effectiveKey = config.apiKey.trim().ifBlank { BuildConfig.GEMINI_API_KEY }
+                            val effectiveBaseUrl = config.baseUrl.trim().ifBlank { RetrofitClient.DEFAULT_BASE_URL }
+                            val effectiveModel = config.modelName.trim().ifBlank { "gemini-3.5-flash" }
+
+                            if (effectiveKey.isBlank() || effectiveKey == "MY_GEMINI_API_KEY") {
+                                Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "本地规则引擎")
+                            } else {
+                                try {
+                                    val request = GenerateContentRequest(
+                                        contents = listOf(Content(parts = listOf(Part(text = prompt))))
+                                    )
+                                    val service = RetrofitClient.getGeminiService(effectiveBaseUrl)
+                                    val response = service.generateContent(effectiveModel, effectiveKey, request)
+                                    val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                                    if (!text.isNullOrBlank()) {
+                                        Triple(text.trim(), AiAdviceSource.GEMINI_CLOUD, effectiveModel)
+                                    } else {
+                                        Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "本地规则引擎")
+                                    }
+                                } catch (e: Exception) {
+                                    Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "离线保底")
+                                }
+                            }
+                        }
+                    } else {
+                        // Standard default: Gemini if key provided, else smart local fallback
+                        val defaultKey = BuildConfig.GEMINI_API_KEY
+                        if (defaultKey.isNotBlank() && defaultKey != "MY_GEMINI_API_KEY") {
+                            try {
+                                val request = GenerateContentRequest(
+                                    contents = listOf(Content(parts = listOf(Part(text = prompt))))
+                                )
+                                val service = RetrofitClient.geminiService
+                                val response = service.generateContent("gemini-3.5-flash", defaultKey, request)
+                                val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                                if (!text.isNullOrBlank()) {
+                                    Triple(text.trim(), AiAdviceSource.GEMINI_CLOUD, "gemini-3.5-flash")
+                                } else {
+                                    Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "本地规则引擎")
+                                }
+                            } catch (e: Exception) {
+                                Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "离线保底")
+                            }
+                        } else {
+                            Triple(getMockAdvice(currentStats, persona), AiAdviceSource.LOCAL_FALLBACK, "本地规则引擎")
                         }
                     }
                 }
