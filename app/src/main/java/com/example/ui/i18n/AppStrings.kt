@@ -32,14 +32,14 @@ object AppStrings {
     }
 
     private val zhMap = mapOf(
-        "app_name" to "烟记",
+        "app_name" to "榔烟记",
         "tab_home" to "首页",
-        "tab_trends" to "趋势",
-        "tab_store" to "烟盒",
+        "tab_trends" to "分析",
+        "tab_store" to "品牌",
         "tab_settings" to "设置",
         
-        "title_home" to "烟记",
-        "title_trends" to "趋势与统计",
+        "title_home" to "榔烟记",
+        "title_trends" to "烟草趋势与统计",
         "title_store" to "我的烟盒",
         "title_settings" to "设置与外观",
 
@@ -177,10 +177,10 @@ object AppStrings {
         "swipe_hint" to "💡 提示：右滑卡片‘设为当前’，左滑卡片‘删除烟草’",
         "set_active_swipe" to "设为当前",
         "delete_swipe" to "删除",
-        "about_title" to "关于 烟记",
+        "about_title" to "关于榔烟记",
         "about_subtitle" to "开发者: Nonion · nonion.pl@gmail.com",
         "about_dialog_title" to "关于软件",
-        "about_desc" to "烟记 是一款专注于智能记录吸烟行为、分析社交接发烟关系与烟草开销、并提供量身打卡与控烟方案的全功能助手。",
+        "about_desc" to "榔烟记记录烟草与槟榔两类独立数据，帮助了解使用习惯、社交分享、开销与控制目标；通过底部开关切换主体。",
         "software_version" to "软件版本",
         "developer" to "开发者",
         "contact_email" to "联系邮箱",
@@ -234,14 +234,14 @@ object AppStrings {
     )
 
     private val enMap = mapOf(
-        "app_name" to "Smoking Tracker",
+        "app_name" to "Betel & Smoke",
         "tab_home" to "Home",
-        "tab_trends" to "Trends",
-        "tab_store" to "Box",
+        "tab_trends" to "Analysis",
+        "tab_store" to "Brands",
         "tab_settings" to "Settings",
 
-        "title_home" to "Smoking Tracker",
-        "title_trends" to "Trends & Analytics",
+        "title_home" to "Betel & Smoke",
+        "title_trends" to "Smoking Trends & Analytics",
         "title_store" to "My Cigarette Box",
         "title_settings" to "Settings & Theme",
 
@@ -379,10 +379,10 @@ object AppStrings {
         "swipe_hint" to "💡 Tip: Swipe right to 'Set Active', swipe left to 'Delete'",
         "set_active_swipe" to "Set Active",
         "delete_swipe" to "Delete",
-        "about_title" to "About Smoking Tracker",
+        "about_title" to "About Betel & Smoke",
         "about_subtitle" to "Developer: Nonion · nonion.pl@gmail.com",
         "about_dialog_title" to "About Application",
-        "about_desc" to "Smoking Tracker (烟记) is a full-featured assistant dedicated to smart logging of smoking habits, analyzing social sharing & expenses, and offering custom quit plans.",
+        "about_desc" to "Betel & Smoke tracks tobacco and betel habits separately, including social sharing, spending, and goals. Switch subjects from the bottom navigation.",
         "software_version" to "Version",
         "developer" to "Developer",
         "contact_email" to "Contact Email",

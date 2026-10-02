@@ -1,4 +1,4 @@
-# 🚬 Smoking Tracker (烟记)
+# 🚬 Betel & Smoke (榔烟记)
 
 > **A smart, privacy-first, offline-ready Android application built with Jetpack Compose & Material 3 for tracking smoking habits, social cigarette sharing, financial expenses, reduction goals, and AI-powered health advice.**
 
@@ -18,8 +18,8 @@
 ## 🖼️ Overview & Showcase
 
 <p align="center">
-  <img src="app/src/main/res/drawable/smoking_tracker_app_icon.jpg" width="120" height="120" alt="Smoking Tracker Icon" style="border-radius: 24px;" /><br/>
-  <b>Smoking Tracker (烟记)</b><br/>
+  <img src="artwork/launcher_icon.svg" width="120" height="120" alt="Betel & Smoke Icon" style="border-radius: 24px;" /><br/>
+  <b>Betel &amp; Smoke (榔烟记)</b><br/>
   <i>Official App Icon</i>
 </p>
 
@@ -48,7 +48,7 @@
 ## ✨ Key Features & Highlights
 
 ### 1. 🚬 3-Scenario Social Logging
-Standard smoking trackers treat all cigarettes the same. **Smoking Tracker** accurately categorizes smoking events based on real-world social context:
+Standard smoking trackers treat all cigarettes the same. **Betel & Smoke** accurately categorizes smoking events based on real-world social context:
 
 - **Self Purchase (自购自抽)**: Cigarettes you bought and smoked yourself. Counted towards **both** personal health smoking volume and personal financial expenses.
 - **Social Shared Out (社交递烟)**: Handing your own cigarette to a friend or colleague. Counted as a **financial expense**, but **not** added to your personal health smoking intake.
@@ -85,6 +85,8 @@ Standard smoking trackers treat all cigarettes the same. **Smoking Tracker** acc
 
 ### 6. 💾 100% Offline Privacy & Data Backup
 - Powered by **Room Database** for high performance and offline independence.
+- **Separate betel nut tracker**: Use the center tobacco/betel switch to change all four sections together. The betel home logs consumption and sharing, Analysis shows trends and spending, Brands manages pack price and piece count, and Settings has independent daily limits and monthly budgets. Betel data is included in local backups and never mixed into cigarette totals.
+- **Separate demo switches**: Both subjects offer sample data in Data & Sync. Turning off betel demo mode removes only marked sample records, not personal logs or brands.
 - **JSON Backup & Restore**: Export full database state to a JSON file and restore anytime.
 - **Clear Data**: Full reset options for privacy and fresh starts.
 

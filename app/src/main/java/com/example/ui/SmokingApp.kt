@@ -39,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.BuildConfig
 import com.example.data.model.Cigarette
 import com.example.data.model.SmokingLog
 import com.example.data.sync.SyncState
@@ -79,12 +81,34 @@ import com.example.ui.i18n.AppThemeMode
 import java.text.SimpleDateFormat
 import java.util.*
 
+internal enum class TrackerDestination {
+    TOBACCO_HOME, TOBACCO_ANALYSIS, TOBACCO_BRANDS, TOBACCO_SETTINGS,
+    BETEL_HOME, BETEL_ANALYSIS, BETEL_BRANDS, BETEL_SETTINGS
+}
+
+internal fun destinationFor(subject: TrackingSubject, tab: Int): TrackerDestination = when (subject) {
+    TrackingSubject.TOBACCO -> when (tab) {
+        0 -> TrackerDestination.TOBACCO_HOME
+        1 -> TrackerDestination.TOBACCO_ANALYSIS
+        3 -> TrackerDestination.TOBACCO_BRANDS
+        else -> TrackerDestination.TOBACCO_SETTINGS
+    }
+    TrackingSubject.BETEL -> when (tab) {
+        0 -> TrackerDestination.BETEL_HOME
+        1 -> TrackerDestination.BETEL_ANALYSIS
+        3 -> TrackerDestination.BETEL_BRANDS
+        else -> TrackerDestination.BETEL_SETTINGS
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SmokingApp(viewModel: SmokingViewModel) {
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var showAiConfigDialog by remember { mutableStateOf(false) }
     val stats by viewModel.stats.collectAsStateWithLifecycle()
+    val subject by viewModel.trackingSubject.collectAsStateWithLifecycle()
+    val isBetel = subject == TrackingSubject.BETEL
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -93,7 +117,7 @@ fun SmokingApp(viewModel: SmokingViewModel) {
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Rounded.SmokeFree,
+                            imageVector = if (isBetel) Icons.Rounded.Spa else Icons.Rounded.SmokeFree,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(28.dp)
@@ -102,8 +126,8 @@ fun SmokingApp(viewModel: SmokingViewModel) {
                         Text(
                             text = when (selectedTab) {
                                 0 -> AppStrings.get("title_home", lang)
-                                1 -> AppStrings.get("title_trends", lang)
-                                2 -> AppStrings.get("title_store", lang)
+                                1 -> if (isBetel) (if (lang == AppLanguage.EN) "Betel analysis" else "槟榔分析") else AppStrings.get("title_trends", lang)
+                                3 -> if (isBetel) (if (lang == AppLanguage.EN) "Betel brands" else "槟榔品牌") else AppStrings.get("title_store", lang)
                                 else -> AppStrings.get("title_settings", lang)
                             },
                             fontWeight = FontWeight.Bold
@@ -130,14 +154,20 @@ fun SmokingApp(viewModel: SmokingViewModel) {
                     label = { Text(AppStrings.get("tab_trends", lang)) }
                 )
                 NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Rounded.Inventory2, contentDescription = AppStrings.get("tab_store", lang)) },
-                    label = { Text(AppStrings.get("tab_store", lang)) }
+                    selected = false,
+                    onClick = { viewModel.toggleTrackingSubject() },
+                    icon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = if (lang == AppLanguage.EN) "Switch to ${if (isBetel) "tobacco" else "betel nut"}" else "切换到${if (isBetel) "烟草" else "槟榔"}") },
+                    label = { Text(if (isBetel) (if (lang == AppLanguage.EN) "Betel" else "槟榔") else (if (lang == AppLanguage.EN) "Tobacco" else "烟草")) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
+                    icon = { Icon(Icons.Rounded.Inventory2, contentDescription = AppStrings.get("tab_store", lang)) },
+                    label = { Text(AppStrings.get("tab_store", lang)) }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4 },
                     icon = { Icon(Icons.Rounded.Settings, contentDescription = AppStrings.get("tab_settings", lang)) },
                     label = { Text(AppStrings.get("tab_settings", lang)) }
                 )
@@ -149,11 +179,15 @@ fun SmokingApp(viewModel: SmokingViewModel) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            when (selectedTab) {
-                0 -> DashboardScreen(viewModel = viewModel, stats = stats, onOpenAiConfig = { showAiConfigDialog = true })
-                1 -> ChartsScreen(viewModel = viewModel, stats = stats)
-                2 -> StoreScreen(viewModel = viewModel)
-                3 -> SettingsScreen(viewModel = viewModel, stats = stats, onOpenAiConfig = { showAiConfigDialog = true })
+            when (destinationFor(subject, selectedTab)) {
+                TrackerDestination.TOBACCO_HOME -> DashboardScreen(viewModel = viewModel, stats = stats, onOpenAiConfig = { showAiConfigDialog = true })
+                TrackerDestination.TOBACCO_ANALYSIS -> ChartsScreen(viewModel = viewModel, stats = stats)
+                TrackerDestination.TOBACCO_BRANDS -> StoreScreen(viewModel = viewModel)
+                TrackerDestination.TOBACCO_SETTINGS -> key(subject) { SettingsScreen(viewModel = viewModel, stats = stats, subject = subject, onOpenAiConfig = { showAiConfigDialog = true }) }
+                TrackerDestination.BETEL_HOME -> BetelHomeScreen(viewModel)
+                TrackerDestination.BETEL_ANALYSIS -> BetelAnalysisScreen(viewModel)
+                TrackerDestination.BETEL_BRANDS -> BetelBrandsScreen(viewModel)
+                TrackerDestination.BETEL_SETTINGS -> key(subject) { SettingsScreen(viewModel = viewModel, stats = stats, subject = subject, onOpenAiConfig = { showAiConfigDialog = true }) }
             }
         }
     }
@@ -1267,7 +1301,8 @@ fun TrendChartComposable(
     chartType: ChartType,
     selectedIndex: Int = -1,
     onSelectIndex: (Int) -> Unit = {},
-    lang: AppLanguage = AppLanguage.ZH
+    lang: AppLanguage = AppLanguage.ZH,
+    countUnit: String = "支"
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val secondaryColor = MaterialTheme.colorScheme.secondary
@@ -1452,7 +1487,7 @@ fun TrendChartComposable(
                             isAntiAlias = true
                         }
 
-                        val unitStr = if (lang == AppLanguage.EN) "" else "支"
+                        val unitStr = if (lang == AppLanguage.EN) "" else countUnit
                         drawContext.canvas.nativeCanvas.drawText("${combinedCount}$unitStr", x, (yCombined - 10.dp.toPx()).coerceAtLeast(12.dp.toPx()), paintCombinedText)
                         if (yRec != yCombined) {
                             drawContext.canvas.nativeCanvas.drawText("${item.receivedCount}$unitStr", x, (yRec - 10.dp.toPx()).coerceAtLeast(12.dp.toPx()), paintRecText)
@@ -2145,11 +2180,16 @@ fun CigaretteItemCard(
 fun SettingsScreen(
     viewModel: SmokingViewModel,
     stats: SmokingStats,
+    subject: TrackingSubject = TrackingSubject.TOBACCO,
     onOpenAiConfig: () -> Unit = {}
 ) {
+    val betelGoal by viewModel.betelGoal.collectAsStateWithLifecycle()
+    val isBetel = subject == TrackingSubject.BETEL
+    var showBetelGoalDialog by remember { mutableStateOf(false) }
     val activeGoal by viewModel.activeGoal.collectAsStateWithLifecycle()
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val isDemoMode by viewModel.isDemoMode.collectAsStateWithLifecycle()
+    val isBetelDemoMode by viewModel.isBetelDemoMode.collectAsStateWithLifecycle()
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
     val themeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
     val colorPreset by viewModel.appColorPreset.collectAsStateWithLifecycle()
@@ -2234,6 +2274,30 @@ fun SettingsScreen(
             )
         }
 
+        if (isBetel) {
+            WeChatSettingsGroup(title = if (lang == AppLanguage.EN) "Betel goals" else "槟榔目标") {
+                WeChatSettingsItem(
+                    title = if (lang == AppLanguage.EN) "Daily betel nut limit" else "每日槟榔限制",
+                    subtitle = if (lang == AppLanguage.EN) "Consumed pieces per day" else "每日食用颗数",
+                    value = betelGoal?.let { "${it.dailyLimit} ${if (lang == AppLanguage.EN) "pieces/day" else "颗/天"}" }
+                        ?: (if (lang == AppLanguage.EN) "Not set" else "未设置"),
+                    icon = Icons.Rounded.Flag,
+                    iconBgColor = Color(0xFFE53935).copy(alpha = 0.15f),
+                    iconTintColor = Color(0xFFE53935),
+                    onClick = { showBetelGoalDialog = true }
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                WeChatSettingsItem(
+                    title = if (lang == AppLanguage.EN) "Monthly betel nut budget" else "每月槟榔预算",
+                    value = betelGoal?.monthlyBudget?.let { "${currency.symbol}$it" }
+                        ?: (if (lang == AppLanguage.EN) "Not set" else "未设置"),
+                    icon = Icons.Rounded.AccountBalanceWallet,
+                    iconBgColor = Color(0xFFFB8C00).copy(alpha = 0.15f),
+                    iconTintColor = Color(0xFFFB8C00),
+                    onClick = { showBetelGoalDialog = true }
+                )
+            }
+        } else {
         // Group 2: 控烟目标与算法设置 (Goals & Calculation Rules)
         WeChatSettingsGroup(title = AppStrings.get("goal_card_title", lang)) {
             val dailyLimitStr = "${activeGoal?.dailyLimit ?: 10} ${if (lang == AppLanguage.EN) "sticks/day" else "支/天"}"
@@ -2287,19 +2351,25 @@ fun SettingsScreen(
             )
         }
 
+        }
+
         // Group 3: 数据与云端备份 (Demo Mode & Cloud Sync)
         WeChatSettingsGroup(title = if (lang == AppLanguage.EN) "Data & Sync" else "数据与同步") {
             WeChatSettingsItem(
                 title = AppStrings.get("demo_card_title", lang),
-                subtitle = if (lang == AppLanguage.EN) "60 days of realistic sample records" else "近60天模拟烟民真实行为数据",
+                subtitle = if (isBetel) {
+                    if (lang == AppLanguage.EN) "60 days of sample betel & sharing records" else "近60天槟榔食用与社交模拟记录"
+                } else {
+                    if (lang == AppLanguage.EN) "60 days of realistic sample records" else "近60天模拟烟民真实行为数据"
+                },
                 icon = Icons.Rounded.BugReport,
                 iconBgColor = Color(0xFF3949AB).copy(alpha = 0.15f),
                 iconTintColor = Color(0xFF3949AB),
                 showChevron = false,
                 trailingContent = {
                     Switch(
-                        checked = isDemoMode,
-                        onCheckedChange = { viewModel.toggleDemoMode(it) }
+                        checked = if (isBetel) isBetelDemoMode else isDemoMode,
+                        onCheckedChange = { if (isBetel) viewModel.toggleBetelDemoMode(it) else viewModel.toggleDemoMode(it) }
                     )
                 }
             )
@@ -2315,6 +2385,7 @@ fun SettingsScreen(
                 onClick = { showCloudSyncDialog = true }
             )
 
+            if (!isBetel) {
             HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
             WeChatSettingsItem(
@@ -2326,9 +2397,11 @@ fun SettingsScreen(
                 iconTintColor = Color(0xFFFF8F00),
                 onClick = { showBrandSyncDialog = true }
             )
+            }
         }
 
         // Group: AI 戒烟教练与模型配置
+        if (!isBetel) {
         WeChatSettingsGroup(title = if (lang == AppLanguage.EN) "AI Coach & Model" else "AI 戒烟教练与大模型配置") {
             val aiConfig by viewModel.aiCustomConfig.collectAsStateWithLifecycle()
             val channelSummary = if (aiConfig.enabled) {
@@ -2358,12 +2431,14 @@ fun SettingsScreen(
             )
         }
 
+        }
+
         // Group 4: 关于 (About)
         WeChatSettingsGroup(title = if (lang == AppLanguage.EN) "About App" else "关于软件") {
             WeChatSettingsItem(
                 title = AppStrings.get("about_title", lang),
                 subtitle = AppStrings.get("about_subtitle", lang),
-                value = "v2.0",
+                value = "v${BuildConfig.VERSION_NAME}",
                 icon = Icons.Rounded.Info,
                 iconBgColor = Color(0xFF757575).copy(alpha = 0.15f),
                 iconTintColor = Color(0xFF757575),
@@ -2372,8 +2447,17 @@ fun SettingsScreen(
         }
     }
 
+    if (showBetelGoalDialog && isBetel) BetelGoalDialog(
+        lang = lang,
+        goal = betelGoal,
+        onDismiss = { showBetelGoalDialog = false }
+    ) { daily, budget ->
+        viewModel.saveBetelGoal(daily, budget)
+        showBetelGoalDialog = false
+    }
+
     // ================= Dialogs =================
-    if (showBrandSyncDialog) {
+    if (showBrandSyncDialog && !isBetel) {
         val jsonUrl by viewModel.cigaretteJsonUrl.collectAsStateWithLifecycle()
         val isSyncing by viewModel.isCigaretteSyncing.collectAsStateWithLifecycle()
         val syncResult by viewModel.cigaretteSyncResult.collectAsStateWithLifecycle()
@@ -2474,7 +2558,7 @@ fun SettingsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(AppStrings.get("about_dialog_title", lang), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(AppStrings.get("about_title", lang), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
@@ -2490,7 +2574,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(AppStrings.get("software_version", lang), fontSize = 13.sp, color = Color.Gray)
-                        Text("v2.0 (Build 2026.07)", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("v${BuildConfig.VERSION_NAME}", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2666,7 +2750,7 @@ fun SettingsScreen(
                                         fontSize = 14.sp
                                     )
                                     Text(
-                                        text = if (lang == AppLanguage.EN) "Preview: Smoking Tracker 12345" else "预览文字: 烟记 12345",
+                                        text = if (lang == AppLanguage.EN) "Preview: ${AppStrings.get("app_name", lang)} 12345" else "预览文字: ${AppStrings.get("app_name", lang)} 12345",
                                         fontFamily = fontItem.fontFamily,
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2740,7 +2824,7 @@ fun SettingsScreen(
         )
     }
 
-    if (showGoalDialog) {
+    if (showGoalDialog && !isBetel) {
         var limitInput by remember { mutableStateOf(activeGoal?.dailyLimit?.toString() ?: "10") }
         var budgetInput by remember { mutableStateOf(activeGoal?.monthlyBudget?.toString() ?: "") }
         var quitDateTs by remember { mutableStateOf(activeGoal?.targetQuitDate) }
@@ -2827,7 +2911,7 @@ fun SettingsScreen(
         )
     }
 
-    if (showIntervalDialog) {
+    if (showIntervalDialog && !isBetel) {
         AlertDialog(
             onDismissRequest = { showIntervalDialog = false },
             title = {
@@ -2898,7 +2982,7 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = AppStrings.get("cloud_desc", lang),
+                        text = if (isBetel) (if (lang == AppLanguage.EN) "Back up all tracking records, brands and goals. Each mode remains independent." else "备份与恢复全部记录、品牌及目标；各主体数据独立统计。") else AppStrings.get("cloud_desc", lang),
                         fontSize = 12.sp,
                         color = Color.Gray
                     )

@@ -1,6 +1,9 @@
 package com.example.data.sync
 
 import android.content.Context
+import com.example.data.model.BetelGoal
+import com.example.data.model.BetelLog
+import com.example.data.model.BetelProduct
 import com.example.data.model.Cigarette
 import com.example.data.model.SmokingGoal
 import com.example.data.model.SmokingLog
@@ -21,7 +24,10 @@ data class CloudBackupPayload(
     val cigarettes: List<Cigarette>,
     val logs: List<SmokingLog>,
     val goals: List<SmokingGoal>,
-    val backupTime: Long = System.currentTimeMillis()
+    val backupTime: Long = System.currentTimeMillis(),
+    val betelProducts: List<BetelProduct> = emptyList(),
+    val betelLogs: List<BetelLog> = emptyList(),
+    val betelGoal: BetelGoal? = null
 )
 
 sealed interface SyncState {
@@ -69,7 +75,10 @@ class CloudSyncManager(
             val payload = CloudBackupPayload(
                 cigarettes = cigarettes,
                 logs = logs,
-                goals = allGoals
+                goals = allGoals,
+                betelProducts = repository.betelProducts.first(),
+                betelLogs = repository.betelLogs.first(),
+                betelGoal = repository.betelGoal.first()
             )
             delay(500)
 
@@ -113,6 +122,12 @@ class CloudSyncManager(
             // First we need to delete logs
             repository.deleteAllLogs()
             
+            // Betel IDs are retained so restored logs still refer to their original products.
+            repository.clearBetelData()
+            payload.betelProducts.forEach { repository.addBetelProduct(it) }
+            payload.betelLogs.forEach { repository.addBetelLog(it) }
+            payload.betelGoal?.let { repository.saveBetelGoal(it) }
+
             // Restore Cigarettes
             for (c in payload.cigarettes) {
                 repository.insertCigarette(c.copy(id = 0)) // Re-insert to avoid ID conflicts, or keep IDs

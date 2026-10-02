@@ -12,6 +12,9 @@ import com.example.data.api.OpenAiChatRequest
 import com.example.data.api.Part
 import com.example.data.api.RetrofitClient
 import com.example.data.db.AppDatabase
+import com.example.data.model.BetelGoal
+import com.example.data.model.BetelLog
+import com.example.data.model.BetelProduct
 import com.example.data.model.Cigarette
 import com.example.data.model.SmokingGoal
 import com.example.data.model.SmokingLog
@@ -180,6 +183,8 @@ data class TrendDataItem(
     val peakHourSlot: String = "无打卡"
 )
 
+enum class TrackingSubject { TOBACCO, BETEL }
+
 data class SmokingStats(
     val todaySelfCount: Int = 0,
     val todaySharedCount: Int = 0,
@@ -205,6 +210,15 @@ class SmokingViewModel(
     private val syncManager: CloudSyncManager,
     private val context: Context? = null
 ) : ViewModel() {
+
+    val trackingSubject = MutableStateFlow(TrackingSubject.TOBACCO)
+
+    fun toggleTrackingSubject() {
+        val next = if (trackingSubject.value == TrackingSubject.TOBACCO) TrackingSubject.BETEL else TrackingSubject.TOBACCO
+        trackingSubject.value = next
+        context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            ?.edit()?.putString("tracking_subject", next.name)?.apply()
+    }
 
     val appLanguage = MutableStateFlow(AppLanguage.ZH)
     val appThemeMode = MutableStateFlow(AppThemeMode.SYSTEM)
@@ -240,6 +254,80 @@ class SmokingViewModel(
         appFontFamily.value = font
         context?.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
             ?.edit()?.putString("font_family", font.code)?.apply()
+    }
+
+    val betelProducts = repository.betelProducts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val betelLogs = repository.betelLogs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val betelGoal = repository.betelGoal.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val isBetelDemoMode = repository.betelLogs.map { logs -> logs.any { it.isDemo } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun toggleBetelDemoMode(enabled: Boolean) {
+        viewModelScope.launch {
+            // Only sample rows are removed; personal records and products are never touched.
+            repository.deleteBetelDemoLogs()
+            if (enabled) {
+                val product = repository.betelProducts.firstOrNull().orEmpty()
+                    .firstOrNull { it.isActive } ?: repository.betelProducts.firstOrNull().orEmpty().firstOrNull()
+                val unitPrice = product?.let { it.packPrice / it.piecesPerPack.coerceAtLeast(1) } ?: 2.0
+                val demoLogs = buildList {
+                    val now = System.currentTimeMillis()
+                    for (offset in 59 downTo 0) {
+                        for ((hour, type) in listOf(9 to "SELF", 13 to "SELF", 16 to "RECEIVED_IN", 20 to "SHARED_OUT")) {
+                            val time = Calendar.getInstance().apply {
+                                add(Calendar.DAY_OF_YEAR, -offset)
+                                set(Calendar.HOUR_OF_DAY, hour)
+                                set(Calendar.MINUTE, 10 + (offset * 7 + hour) % 40)
+                                set(Calendar.SECOND, 0)
+                                set(Calendar.MILLISECOND, 0)
+                            }.timeInMillis
+                            if (time <= now) add(BetelLog(
+                                productId = product?.id ?: 0,
+                                productName = product?.name ?: "演示槟榔",
+                                quantity = if (type == "SELF" && offset % 3 == 0) 2 else 1,
+                                logType = type,
+                                cost = if (type == "RECEIVED_IN") 0.0 else unitPrice * (if (type == "SELF" && offset % 3 == 0) 2 else 1),
+                                timestamp = time,
+                                isDemo = true
+                            ))
+                        }
+                    }
+                }
+                repository.addBetelLogs(demoLogs)
+            }
+        }
+    }
+
+    fun addBetelProduct(name: String, price: Double, piecesPerPack: Int) {
+        if (name.isBlank() || !price.isFinite() || price < 0 || piecesPerPack <= 0) return
+        viewModelScope.launch {
+            val first = repository.betelProducts.firstOrNull().orEmpty().isEmpty()
+            repository.addBetelProduct(BetelProduct(name = name.trim(), packPrice = price, piecesPerPack = piecesPerPack, isActive = first))
+        }
+    }
+
+    fun updateBetelProduct(product: BetelProduct, name: String, price: Double, piecesPerPack: Int) {
+        if (name.isBlank() || !price.isFinite() || price < 0 || piecesPerPack <= 0) return
+        viewModelScope.launch { repository.updateBetelProduct(product.copy(name = name.trim(), packPrice = price, piecesPerPack = piecesPerPack)) }
+    }
+
+    fun setActiveBetelProduct(id: Int) = viewModelScope.launch { repository.setActiveBetelProduct(id) }
+
+    fun deleteBetelProduct(id: Int) = viewModelScope.launch { repository.deleteBetelProduct(id) }
+
+    fun addBetelLog(product: BetelProduct, quantity: Int, logType: String) {
+        if (quantity <= 0 || logType !in listOf("SELF", "SHARED_OUT", "RECEIVED_IN")) return
+        viewModelScope.launch {
+            val cost = if (logType == "RECEIVED_IN") 0.0 else quantity * product.packPrice / product.piecesPerPack.coerceAtLeast(1)
+            repository.addBetelLog(BetelLog(productId = product.id, productName = product.name, quantity = quantity, logType = logType, cost = cost))
+        }
+    }
+
+    fun deleteBetelLog(id: Int) = viewModelScope.launch { repository.deleteBetelLog(id) }
+
+    fun saveBetelGoal(dailyLimit: Int, monthlyBudget: Double?) {
+        if (dailyLimit < 0 || (monthlyBudget != null && (!monthlyBudget.isFinite() || monthlyBudget < 0))) return
+        viewModelScope.launch { repository.saveBetelGoal(BetelGoal(dailyLimit = dailyLimit, monthlyBudget = monthlyBudget)) }
     }
 
     val cigarettes: StateFlow<List<Cigarette>> = repository.allCigarettes
@@ -538,6 +626,9 @@ class SmokingViewModel(
     init {
         context?.let { ctx ->
             val prefs = ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            trackingSubject.value = runCatching {
+                TrackingSubject.valueOf(prefs.getString("tracking_subject", TrackingSubject.TOBACCO.name) ?: TrackingSubject.TOBACCO.name)
+            }.getOrDefault(TrackingSubject.TOBACCO)
             val langCode = prefs.getString("language", AppLanguage.ZH.code) ?: AppLanguage.ZH.code
             val themeCode = prefs.getString("theme_mode", AppThemeMode.SYSTEM.code) ?: AppThemeMode.SYSTEM.code
             val colorCode = prefs.getString("color_preset", AppColorPreset.DEFAULT.code) ?: AppColorPreset.DEFAULT.code
@@ -1334,7 +1425,8 @@ class SmokingViewModelFactory(private val context: Context) : ViewModelProvider.
             val repository = SmokingRepository(
                 database.cigaretteDao(),
                 database.smokingLogDao(),
-                database.smokingGoalDao()
+                database.smokingGoalDao(),
+                database.betelDao()
             )
             val syncManager = CloudSyncManager(context.applicationContext, repository)
             @Suppress("UNCHECKED_CAST")
@@ -1343,4 +1435,3 @@ class SmokingViewModelFactory(private val context: Context) : ViewModelProvider.
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
-

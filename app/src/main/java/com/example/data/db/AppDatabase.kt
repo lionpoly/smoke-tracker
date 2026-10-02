@@ -4,7 +4,12 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.data.dao.BetelDao
+import com.example.data.model.BetelGoal
+import com.example.data.model.BetelLog
+import com.example.data.model.BetelProduct
 import com.example.data.dao.CigaretteDao
 import com.example.data.dao.SmokingGoalDao
 import com.example.data.dao.SmokingLogDao
@@ -16,16 +21,32 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [Cigarette::class, SmokingLog::class, SmokingGoal::class],
-    version = 4,
+    entities = [Cigarette::class, SmokingLog::class, SmokingGoal::class, BetelProduct::class, BetelLog::class, BetelGoal::class],
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun betelDao(): BetelDao
     abstract fun cigaretteDao(): CigaretteDao
     abstract fun smokingLogDao(): SmokingLogDao
     abstract fun smokingGoalDao(): SmokingGoalDao
 
     companion object {
+        // Preserve existing smoking data when adding the independent betel tracker.
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `betel_products` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `packPrice` REAL NOT NULL, `piecesPerPack` INTEGER NOT NULL, `isActive` INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `betel_logs` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `productId` INTEGER NOT NULL, `productName` TEXT NOT NULL, `quantity` INTEGER NOT NULL, `logType` TEXT NOT NULL, `cost` REAL NOT NULL, `timestamp` INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `betel_goals` (`id` INTEGER NOT NULL, `dailyLimit` INTEGER NOT NULL, `monthlyBudget` REAL, PRIMARY KEY(`id`))")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `betel_logs` ADD COLUMN `isDemo` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -36,6 +57,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smoking_tracker_db"
                 )
+                .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
                 .addCallback(DatabaseCallback(scope))
                 .build()
