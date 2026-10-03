@@ -130,7 +130,9 @@ fun SmokingApp(viewModel: SmokingViewModel) {
                                 3 -> if (isBetel) (if (lang == AppLanguage.EN) "Betel brands" else "槟榔品牌") else AppStrings.get("title_store", lang)
                                 else -> AppStrings.get("title_settings", lang)
                             },
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 },

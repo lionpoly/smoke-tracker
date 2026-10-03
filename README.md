@@ -1,9 +1,8 @@
-# 🚬 Betel & Smoke (榔烟记)
+# 🚬 Betel & Smoke Tracker (榔烟记)
 
-> **A smart, privacy-first, offline-ready Android application built with Jetpack Compose & Material 3 for tracking smoking habits, social cigarette sharing, financial expenses, reduction goals, and AI-powered health advice.**
+> **A smart, privacy-first, offline-ready Android application built with Jetpack Compose & Material 3 for separately tracking tobacco and betel habits, social sharing, expenses, reduction goals, and AI-powered health advice.**
 
-[![Private Repository](https://img.shields.io/badge/Repository-Private-red.svg)](https://github.com)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin_100%25-purple.svg)](https://kotlinlang.org/)
 [![Android](https://img.shields.io/badge/Platform-Android_12%2B-green.svg)](https://developer.android.com/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack_Compose_M3-4285F4.svg)](https://developer.android.com/jetpack/compose)
@@ -18,37 +17,34 @@
 ## 🖼️ Overview & Showcase
 
 <p align="center">
-  <img src="artwork/launcher_icon.svg" width="120" height="120" alt="Betel & Smoke Icon" style="border-radius: 24px;" /><br/>
-  <b>Betel &amp; Smoke (榔烟记)</b><br/>
+  <img src="artwork/launcher_icon.svg" width="120" height="120" alt="Betel & Smoke Tracker Icon" style="border-radius: 24px;" /><br/>
+  <b>Betel &amp; Smoke Tracker (榔烟记)</b><br/>
   <i>Official App Icon</i>
 </p>
 
 <br/>
 
-![Smoking Tracker Banner](app/src/main/res/drawable/smoking_tracker_banner.jpg)
+![榔烟记 · Betel & Smoke Tracker 横幅](artwork/readme-banner.svg)
 
 ### 📱 Main Navigation Screens
 
+```text
+┌───────────────────────────────────────────────────────────┐
+│                   Betel & Smoke Tracker                   │
+├────────┬──────────┬──────────────┬─────────┬─────────────┤
+│ Home   │ Analysis │ Tobacco ↔    │ Brands  │ Settings    │
+│        │          │ Betel switch │         │             │
+└────────┴──────────┴──────────────┴─────────┴─────────────┘
 ```
- ┌─────────────────────────────────────────────────────────────────────────────┐
- │                            SMOKING TRACKER APP                              │
- ├──────────────┬──────────────┬──────────────┬──────────────┬─────────────────┤
- │  🏠 Home     │  📊 Trends   │  📦 Box      │  🎯 Goals    │  ⚙️ Settings    │
- │              │              │              │              │                 │
- │ • Quick Log  │ • Bar/Line   │ • Brand list │ • Limits     │ • Language      │
- │ • Today's    │   Charts     │ • Pack/Carton│ • Savings    │ • Currency      │
- │   Stats      │ • Time ranges│   pricing    │ • Gemini AI  │ • Data Backup   │
- │ • Today Logs │ • Peak hours │ • Per stick  │   Advisor    │ • Clear data    │
- │   List       │   insight    │   cost       │              │                 │
- └──────────────┴──────────────┴──────────────┴──────────────┴─────────────────┘
-```
+
+The switch changes all four sections together; only one subject’s records and statistics are shown at a time.
 
 ---
 
 ## ✨ Key Features & Highlights
 
 ### 1. 🚬 3-Scenario Social Logging
-Standard smoking trackers treat all cigarettes the same. **Betel & Smoke** accurately categorizes smoking events based on real-world social context:
+Standard smoking trackers treat all cigarettes the same. **Betel & Smoke Tracker** accurately categorizes smoking events based on real-world social context:
 
 - **Self Purchase (自购自抽)**: Cigarettes you bought and smoked yourself. Counted towards **both** personal health smoking volume and personal financial expenses.
 - **Social Shared Out (社交递烟)**: Handing your own cigarette to a friend or colleague. Counted as a **financial expense**, but **not** added to your personal health smoking intake.
@@ -166,10 +162,24 @@ app/src/main/java/com/example/
 
 ---
 
-## 📄 License & Repository Notice
+## ☕ Support the Project
 
-- **License**: Released under the **[GNU General Public License v3.0 (GPL-3.0)](LICENSE)**.
-- **Repository Status**: **Private Repository**. This project is currently undergoing internal development and is not yet open to public contributions.
+If this app is helpful, you can optionally support its development by scanning either appreciation code. Click an image to view it at full size.
+
+<table align="center">
+  <tr><th>Alipay</th><th>WeChat Pay</th></tr>
+  <tr>
+    <td align="center" valign="top"><a href="assets/alipay_square.png"><img src="assets/alipay_square.png" width="260" alt="Alipay appreciation QR code" /></a></td>
+    <td align="center" valign="top"><a href="assets/wechat_pay.png"><img src="assets/wechat_pay.png" width="260" alt="WeChat Pay appreciation code" /></a></td>
+  </tr>
+</table>
+
+---
+
+## 📄 License & Copyright
+
+- **License**: Released under the **[MIT License](LICENSE)**.
+- **Copyright**: © 2026 nonion (nonion.pl@gmail.com).
 
 ---
 

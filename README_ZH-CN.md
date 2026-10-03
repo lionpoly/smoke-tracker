@@ -1,9 +1,8 @@
-# 🚬 榔烟记 (Betel & Smoke)
+# 🚬 榔烟记 (Betel & Smoke Tracker)
 
 > **一款基于 Jetpack Compose 与 Material 3 打造、支持独立记录烟草与槟榔行为的 Android 应用。**
 
-[![Private Repository](https://img.shields.io/badge/仓库状态-私有仓库-red.svg)](https://github.com)
-[![License: GPL v3](https://img.shields.io/badge/开源协议-GPLv3-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/开源协议-MIT-blue.svg)](LICENSE)
 [![Kotlin](https://img.shields.io/badge/开发语言-Kotlin_100%25-purple.svg)](https://kotlinlang.org/)
 [![Android](https://img.shields.io/badge/平台支持-Android_12%2B-green.svg)](https://developer.android.com/)
 [![Jetpack Compose](https://img.shields.io/badge/UI框架-Jetpack_Compose_M3-4285F4.svg)](https://developer.android.com/jetpack/compose)
@@ -18,29 +17,27 @@
 ## 🖼️ 应用展示与效果
 
 <p align="center">
-  <img src="artwork/launcher_icon.svg" width="120" height="120" alt="Betel & Smoke Icon" style="border-radius: 24px;" /><br/>
-  <b>榔烟记 · Betel & Smoke</b><br/>
+  <img src="artwork/launcher_icon.svg" width="120" height="120" alt="Betel & Smoke Tracker Icon" style="border-radius: 24px;" /><br/>
+  <b>榔烟记 · Betel & Smoke Tracker</b><br/>
   <i>官方应用图标 · App Icon</i>
 </p>
 
 <br/>
 
-![Smoking Tracker Banner](app/src/main/res/drawable/smoking_tracker_banner.jpg)
+![榔烟记 · Betel & Smoke Tracker 横幅](artwork/readme-banner.svg)
 
 ### 📱 核心功能导航结构
 
+```text
+┌───────────────────────────────────────────────────────────┐
+│              榔烟记 · Betel & Smoke Tracker               │
+├────────┬──────────┬──────────────┬─────────┬─────────────┤
+│ 首页   │ 分析     │ 烟草 ↔ 槟榔  │ 品牌    │ 设置        │
+│        │          │ 切换开关     │         │             │
+└────────┴──────────┴──────────────┴─────────┴─────────────┘
 ```
- ┌─────────────────────────────────────────────────────────────────────────────┐
- │                           榔烟记 (BETEL & SMOKE)                             │
- ├──────────────┬──────────────┬──────────────┬──────────────┬─────────────────┤
- │  🏠 首页     │  📊 趋势分析  │  📦 烟盒管理  │  🎯 戒烟目标  │  ⚙️ 设置中心    │
- │              │              │              │              │                 │
- │ • 极速打卡   │ • 柱状/折线图│ • 品牌与规则 │ • 日限额设定 │ • 语言切换     │
- │ • 今日统计   │ • 多时间范围 │ • 单包/整条  │ • 节约开销   │ • 货币符号     │
- │ • 打卡明细   │ • 高峰窗口   │   自动折算   │ • Gemini AI  │ • 数据备份/恢复 │
- │   列表       │   洞察分析   │ • 单支成本   │   健康建议   │ • 清空数据     │
- └──────────────┴──────────────┴──────────────┴──────────────┴─────────────────┘
-```
+
+切换主体后，首页、分析、品牌和设置同步切换；一次只展示一个主体的数据。
 
 ---
 
@@ -165,10 +162,24 @@ app/src/main/java/com/example/
 
 ---
 
-## 📄 协议与仓库说明
+## ☕ 赞赏支持
 
-- **开源协议**: 本项目遵循 **[GNU General Public License v3.0 (GPL-3.0)](LICENSE)** 协议。
-- **仓库状态**: **私有仓库**。目前仍处于内部开发阶段，暂未对外开放开源贡献。
+如果榔烟记对你有所帮助，欢迎自愿扫码赞赏，支持后续开发。点击图片可查看原图。
+
+<table align="center">
+  <tr><th>支付宝</th><th>微信支付</th></tr>
+  <tr>
+    <td align="center" valign="top"><a href="assets/alipay_square.png"><img src="assets/alipay_square.png" width="260" alt="支付宝赞赏二维码" /></a></td>
+    <td align="center" valign="top"><a href="assets/wechat_pay.png"><img src="assets/wechat_pay.png" width="260" alt="微信支付赞赏码" /></a></td>
+  </tr>
+</table>
+
+---
+
+## 📄 协议与版权
+
+- **开源协议**: 本项目遵循 **[MIT License](LICENSE)** 协议。
+- **版权所有**: © 2026 nonion (nonion.pl@gmail.com)。
 
 ---
 

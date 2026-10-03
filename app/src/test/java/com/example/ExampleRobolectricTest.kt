@@ -23,6 +23,6 @@ class ExampleRobolectricTest {
       return context.createConfigurationContext(config).getString(R.string.app_name)
     }
     assertEquals("榔烟记", localizedName("zh"))
-    assertEquals("Betel & Smoke", localizedName("en"))
+    assertEquals("Betel & Smoke Tracker", localizedName("en"))
   }
 }

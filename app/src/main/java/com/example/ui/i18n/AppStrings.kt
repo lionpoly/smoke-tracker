@@ -234,13 +234,13 @@ object AppStrings {
     )
 
     private val enMap = mapOf(
-        "app_name" to "Betel & Smoke",
+        "app_name" to "Betel & Smoke Tracker",
         "tab_home" to "Home",
         "tab_trends" to "Analysis",
         "tab_store" to "Brands",
         "tab_settings" to "Settings",
 
-        "title_home" to "Betel & Smoke",
+        "title_home" to "Betel & Smoke Tracker",
         "title_trends" to "Smoking Trends & Analytics",
         "title_store" to "My Cigarette Box",
         "title_settings" to "Settings & Theme",
@@ -379,10 +379,10 @@ object AppStrings {
         "swipe_hint" to "💡 Tip: Swipe right to 'Set Active', swipe left to 'Delete'",
         "set_active_swipe" to "Set Active",
         "delete_swipe" to "Delete",
-        "about_title" to "About Betel & Smoke",
+        "about_title" to "About Betel & Smoke Tracker",
         "about_subtitle" to "Developer: Nonion · nonion.pl@gmail.com",
         "about_dialog_title" to "About Application",
-        "about_desc" to "Betel & Smoke tracks tobacco and betel habits separately, including social sharing, spending, and goals. Switch subjects from the bottom navigation.",
+        "about_desc" to "Betel & Smoke Tracker tracks tobacco and betel habits separately, including social sharing, spending, and goals. Switch subjects from the bottom navigation.",
         "software_version" to "Version",
         "developer" to "Developer",
         "contact_email" to "Contact Email",

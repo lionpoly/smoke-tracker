@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-label="支付宝赞赏二维码">
+  <!-- Original payment-code pixels come from alipay.jpg. Only the surrounding poster is rearranged. -->
+  <defs>
+    <clipPath id="logo-crop"><rect x="0" y="0" width="1080" height="220"/></clipPath>
+    <clipPath id="card-crop"><rect x="148" y="543" width="784" height="864" rx="39"/></clipPath>
+  </defs>
+  <rect width="1080" height="1080" fill="#1976F3"/>
+  <rect width="1080" height="145" fill="#fff"/>
+  <!-- Shrink only the white Alipay wordmark/header. The two unwanted slogans are outside both crops. -->
+  <g transform="translate(189,-10) scale(0.65)" clip-path="url(#logo-crop)">
+    <image x="0" y="0" width="1080" height="1620" xlink:href="alipay.jpg"/>
+  </g>
+  <!-- Keep the payment code, center icon and recipient label as one intact source slice. -->
+  <g transform="translate(0,-367)" clip-path="url(#card-crop)">
+    <image x="0" y="0" width="1080" height="1620" xlink:href="alipay.jpg"/>
+  </g>
+</svg>
