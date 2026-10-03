@@ -18,8 +18,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -33,82 +31,74 @@ jobs:
           gradle-version: '9.3.1'
 
       - name: Create Env File
-        run: |
-          if [ ! -f .env ]; then
-            if [ -f .env.example ]; then
-              cp .env.example .env
-            else
-              touch .env
-            fi
-          fi
+        run: cp .env.example .env
 
-      - name: Restore Keystore for Consistent APK Signing
+      - name: Restore signing keys
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
-            echo "Decoding custom release keystore from GitHub Secrets..."
-            echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [[ -z "$RELEASE_KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" || -z "$KEY_ALIAS" ]]; then
+              echo "Release signing secrets are required for a tagged build" >&2
+              exit 1
+            fi
+            printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
           fi
-          if [ -f debug.keystore.base64 ] && [ -s debug.keystore.base64 ]; then
-            echo "Decoding repository debug.keystore.base64..."
-            base64 --decode debug.keystore.base64 > debug.keystore || rm -f debug.keystore
-          fi
-          if [ ! -f debug.keystore ] && [ ! -f my-upload-key.jks ]; then
-            echo "Warning: Neither debug.keystore.base64 nor RELEASE_KEYSTORE_BASE64 found. Generating temporary keystore..."
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
+          # Unit tests and non-release builds use a temporary debug certificate.
+          keytool -genkeypair -keystore debug.keystore -storepass android \
+            -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+            -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Run Unit Tests
         run: gradle :app:testDebugUnitTest
 
-      - name: Build Debug APK
-        run: gradle :app:assembleDebug
+      - name: Build Debug APK and Bundle
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: gradle :app:assembleDebug :app:bundleDebug
 
-      - name: Build Debug Bundle (AAB)
-        run: gradle :app:bundleDebug
-
-      - name: Rename artifacts for release
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/SmokeTrack-release-${{ github.ref_name }}.apk
-          cp app/build/outputs/bundle/debug/app-debug.aab app/build/outputs/bundle/debug/SmokeTrack-release-${{ github.ref_name }}.aab
-
-      - name: Upload APK Artifact
+      - name: Upload Debug APK Artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
-          name: SmokeTrack-APK
+          name: Betel-and-Smoke-Tracker-debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload AAB Artifact
+      - name: Build signed Release APK
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          gradle :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk \
+            "Betel-and-Smoke-Tracker-${GITHUB_REF_NAME}.apk"
+
+      - name: Upload Release APK Artifact
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
-          name: SmokeTrack-AAB
-          path: app/build/outputs/bundle/debug/app-debug.aab
+          name: Betel-and-Smoke-Tracker-release-APK
+          path: Betel-and-Smoke-Tracker-${{ github.ref_name }}.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            app/build/outputs/apk/debug/SmokeTrack-release-${{ github.ref_name }}.apk
-            app/build/outputs/bundle/debug/SmokeTrack-release-${{ github.ref_name }}.aab
+          files: Betel-and-Smoke-Tracker-${{ github.ref_name }}.apk
           draft: false
           prerelease: false
-          name: Release ${{ github.ref_name }}
+          name: Betel & Smoke Tracker ${{ github.ref_name }}
           body: |
-            ## 吸烟跟踪 & 戒烟卫士 - ${{ github.ref_name }}
-            
-            GitHub Actions 自动构建打包发布的 Android 客户端。
-            
-            ### 📦 资源下载
-            * **Android 安装包 (APK)**: [SmokeTrack-release-${{ github.ref_name }}.apk](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/SmokeTrack-release-${{ github.ref_name }}.apk)
-            * **应用套件 (AAB)**: [SmokeTrack-release-${{ github.ref_name }}.aab](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/SmokeTrack-release-${{ github.ref_name }}.aab)
-            
-            ### 🛠️ 构建说明
-            * **构建环境**: GitHub Ubuntu Runner
-            * **JDK 版本**: 21 (Temurin)
-            * **Gradle 版本**: 9.3.1
-            * **签名配置**: 采用项目内预设的安全签名证书
+            ## 榔烟记 / Betel & Smoke Tracker ${{ github.ref_name }}
+
+            首个正式版本：分别记录烟草与槟榔的消费、品牌、支出及趋势，底部开关可同步切换各页面。
+
+            下载下方 APK 并在 Android 设备上安装。数据默认保存在本地，可在设置中备份与恢复。
+
+            本安装包为签名的 Release 构建，不是 Debug 构建。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

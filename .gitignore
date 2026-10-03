@@ -16,3 +16,7 @@
 local.properties
 .env
 debug.keystore
+
+# Local release signing credentials (back these up securely)
+my-upload-key.jks
+.release-signing-password
