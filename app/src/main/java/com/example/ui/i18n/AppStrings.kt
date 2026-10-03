@@ -45,7 +45,7 @@ object AppStrings {
 
         "over_limit_warning" to "今日吸烟（%d支）已超出目标限制（%d支），请注意健康并尽量少抽！",
         "active_brand_label" to "当前使用烟草品牌",
-        "unset_default_brand" to "未设置 (默认中华)",
+        "unset_default_brand" to "尚未选择品牌",
         "per_pack_price" to "¥%.2f / 包",
         "stat_today_self" to "今日自抽",
         "stat_today_shared" to "社交递烟",
@@ -173,7 +173,7 @@ object AppStrings {
         "timer_title" to "动态抽烟计时器",
         "timer_since_last" to "距上次吸烟已过去",
         "timer_subtitle_good" to "保持克制，身体健康指标正在持续恢复！",
-        "timer_no_logs" to "暂无打卡记录，点击下方快速记录开始吧！",
+        "timer_no_logs" to "暂无吸烟记录",
         "swipe_hint" to "💡 提示：右滑卡片‘设为当前’，左滑卡片‘删除烟草’",
         "set_active_swipe" to "设为当前",
         "delete_swipe" to "删除",
@@ -247,7 +247,7 @@ object AppStrings {
 
         "over_limit_warning" to "Today's smoking (%d sticks) exceeds target limit (%d sticks). Please watch your health!",
         "active_brand_label" to "Active Cigarette Brand",
-        "unset_default_brand" to "Not set (Default Chunghwa)",
+        "unset_default_brand" to "No brand selected",
         "per_pack_price" to "¥%.2f / pack",
         "stat_today_self" to "Self Smoked",
         "stat_today_shared" to "Shared Out",
@@ -261,9 +261,9 @@ object AppStrings {
         "saved_subtitle" to "Saved by free sticks",
 
         "quick_record_title" to "Quick Log Actions",
-        "quick_self_btn" to "Self Smoked +1",
-        "quick_shared_btn" to "Shared Out +1",
-        "quick_received_btn" to "Received In +1",
+        "quick_self_btn" to "Smoke +1",
+        "quick_shared_btn" to "Share +1",
+        "quick_received_btn" to "Receive +1",
         "custom_record_btn" to "Custom Log / Add Notes",
 
         "ai_advice_title" to "AI Coach Insights & Advice",
@@ -375,7 +375,7 @@ object AppStrings {
         "timer_title" to "Smoke Free Dynamic Timer",
         "timer_since_last" to "Time elapsed since last smoked",
         "timer_subtitle_good" to "Stay resilient, your health indicators are recovering!",
-        "timer_no_logs" to "No logs recorded yet. Tap quick action below to start!",
+        "timer_no_logs" to "No smoking logged yet",
         "swipe_hint" to "💡 Tip: Swipe right to 'Set Active', swipe left to 'Delete'",
         "set_active_swipe" to "Set Active",
         "delete_swipe" to "Delete",

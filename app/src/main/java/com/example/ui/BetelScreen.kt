@@ -164,7 +164,7 @@ fun BetelHomeScreen(viewModel: SmokingViewModel) {
                 active?.let {
                     Spacer(Modifier.width(12.dp))
                     Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primary) {
-                        Text("${money(it.packPrice)} ${label("/包", "/ pack", lang)}",
+                        Text("${money(it.packPrice)}${label("/包", "/ pack", lang)}",
                             Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.onPrimary,
                             fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
@@ -174,7 +174,7 @@ fun BetelHomeScreen(viewModel: SmokingViewModel) {
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatCard(
-                title = label("今日实际食用 (自购+接收)", "Consumed today (own + received)", lang),
+                title = label("今日实际食用 (自购+接收)", "Consumed today", lang),
                 value = "${summary.todayConsumed} $piece",
                 detailText = label("自购 $self$piece · 接收 $received$piece", "Own $self · Received $received", lang),
                 subtitle = goal?.let { label("目标 ${it.dailyLimit} $piece/天", "Goal ${it.dailyLimit} $piece/day", lang) }
@@ -184,8 +184,9 @@ fun BetelHomeScreen(viewModel: SmokingViewModel) {
                 modifier = Modifier.weight(2f)
             )
             StatCard(
-                title = label("今日递出", "Shared today", lang), value = "${summary.todayShared} $piece",
-                subtitle = label("社交开销", "Shared cost", lang), icon = Icons.Rounded.CallMade,
+                title = label("今日递出", "Shared today", lang), value = if (lang == AppLanguage.EN) "${summary.todayShared}" else "${summary.todayShared} $piece",
+                detailText = if (lang == AppLanguage.EN) "pieces" else null,
+                subtitle = label("社交开销", "Given away", lang), icon = Icons.Rounded.CallMade,
                 iconTint = MaterialTheme.colorScheme.secondary, modifier = Modifier.weight(1f)
             )
         }
@@ -202,17 +203,14 @@ fun BetelHomeScreen(viewModel: SmokingViewModel) {
         Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text(label("快捷记录", "Quick log", lang), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Surface(shape = RoundedCornerShape(12.dp)) {
-                        Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(13.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (elapsedText == null) label("暂无食用记录", "No consumption yet", lang)
-                                else label("距上次 $elapsedText", "Since last: $elapsedText", lang),
-                                fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
-                        }
+                Text(label("快捷记录", "Quick log", lang), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Surface(shape = RoundedCornerShape(12.dp)) {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (elapsedText == null) label("暂无食用记录", "No consumption yet", lang)
+                            else label("距上次 $elapsedText", "Since last consumption: $elapsedText", lang),
+                            fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -229,7 +227,7 @@ fun BetelHomeScreen(viewModel: SmokingViewModel) {
                         ) {
                             Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(2.dp))
-                            Text(title, fontSize = 11.sp, maxLines = 1)
+                            Text(title, fontSize = 11.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
                     }
                 }

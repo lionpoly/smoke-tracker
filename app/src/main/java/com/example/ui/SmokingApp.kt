@@ -232,7 +232,7 @@ fun DashboardScreen(
     val activeCigarette = cigarettes.firstOrNull { it.isActive } ?: cigarettes.firstOrNull()
 
     // Dynamic timer calculating time elapsed since last smoking log
-    val lastLog = remember(logs) { logs.maxByOrNull { it.timestamp } }
+    val lastLog = remember(logs) { logs.filter { it.logType != "SHARED_OUT" }.maxByOrNull { it.timestamp } }
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -335,19 +335,21 @@ fun DashboardScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primary
-                ) {
-                    Text(
-                        text = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", activeCigarette?.price ?: 25.0)} ${AppStrings.get("pack_unit", lang)}",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
+                activeCigarette?.let { cigarette ->
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primary
+                    ) {
+                        Text(
+                            text = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", cigarette.price)}${AppStrings.get("pack_unit", lang)}",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
@@ -366,10 +368,12 @@ fun DashboardScreen(
 
             // Merged Card 1 (Self + Received) occupying 2/3 of content width
             StatCard(
-                title = if (lang == AppLanguage.EN) "Today Actual Smoking (Self + Received)" else "今日实际吸烟 (自抽+接烟)",
+                title = if (lang == AppLanguage.EN) "Smoked today" else "今日实际吸烟 (自抽+接烟)",
                 value = "${stats.todaySelfCount + stats.todayReceivedCount} $stickUnit",
-                detailText = "$selfText ${stats.todaySelfCount}$stickUnit · $recText ${stats.todayReceivedCount}$stickUnit",
-                subtitle = "$targetText ${stats.currentGoalLimit} $stickUnit/day (${if (stats.isOverLimit) overText else onTrackText})",
+                detailText = if (lang == AppLanguage.EN) "$selfText ${stats.todaySelfCount} · $recText ${stats.todayReceivedCount}" else "$selfText ${stats.todaySelfCount}$stickUnit · $recText ${stats.todayReceivedCount}$stickUnit",
+                subtitle = if (lang == AppLanguage.EN)
+                    "$targetText ${stats.currentGoalLimit} $stickUnit/day (${if (stats.isOverLimit) overText else onTrackText})"
+                else "$targetText ${stats.currentGoalLimit}$stickUnit/天 (${if (stats.isOverLimit) overText else onTrackText})",
                 icon = Icons.Rounded.SmokingRooms,
                 iconTint = if (stats.isOverLimit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 color = MaterialTheme.colorScheme.surface,
@@ -378,10 +382,10 @@ fun DashboardScreen(
 
             // Card 2 (Shared Out) occupying 1/3 of content width
             StatCard(
-                title = AppStrings.get("stat_today_shared", lang),
-                value = "${stats.todaySharedCount} $stickUnit",
-                detailText = AppStrings.get("shared_subtitle", lang),
-                subtitle = if (lang == AppLanguage.EN) "Shared Cost" else "递烟开销",
+                title = if (lang == AppLanguage.EN) "Shared today" else AppStrings.get("stat_today_shared", lang),
+                value = if (lang == AppLanguage.EN) "${stats.todaySharedCount}" else "${stats.todaySharedCount} $stickUnit",
+                detailText = if (lang == AppLanguage.EN) "sticks" else null,
+                subtitle = if (lang == AppLanguage.EN) AppStrings.get("shared_subtitle", lang) else "递烟开销",
                 icon = Icons.Rounded.CallMade,
                 iconTint = MaterialTheme.colorScheme.secondary,
                 color = MaterialTheme.colorScheme.surface,
@@ -421,41 +425,27 @@ fun DashboardScreen(
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = AppStrings.get("quick_record_title", lang),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        // color = MaterialTheme.colorScheme.primary
+                Text(
+                    text = AppStrings.get("quick_record_title", lang),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(shape = RoundedCornerShape(12.dp)) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Timer,
-                                contentDescription = null,
-                                // tint = MaterialTheme.colorScheme.onPrimary,
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (lang == AppLanguage.EN) "Since last: $elapsedText" else "距上次 $elapsedText",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                // color = MaterialTheme.colorScheme.onPrimary
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                        Icon(Icons.Rounded.Timer, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (lastLog == null) elapsedText else if (lang == AppLanguage.EN) "Since last cigarette: $elapsedText" else "距上次吸烟 $elapsedText",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -476,7 +466,7 @@ fun DashboardScreen(
                     ) {
                         Icon(imageVector = Icons.Rounded.SmokingRooms, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(AppStrings.get("quick_self_btn", lang), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(AppStrings.get("quick_self_btn", lang), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
                     }
 
                     // Quick 2: Shared Out
@@ -491,7 +481,7 @@ fun DashboardScreen(
                     ) {
                         Icon(imageVector = Icons.Rounded.CallMade, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(AppStrings.get("quick_shared_btn", lang), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(AppStrings.get("quick_shared_btn", lang), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
                     }
 
                     // Quick 3: Received In
@@ -506,7 +496,7 @@ fun DashboardScreen(
                     ) {
                         Icon(imageVector = Icons.Rounded.CallReceived, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(AppStrings.get("quick_received_btn", lang), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(AppStrings.get("quick_received_btn", lang), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
                     }
                 }
 
@@ -644,7 +634,7 @@ fun DashboardScreen(
                                         maxLines = 1
                                     )
                                     Text(
-                                        text = if (log.logType == "RECEIVED_IN") AppStrings.get("free_badge", lang) else "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", log.cost)}",
+                                        text = if (log.logType == "RECEIVED_IN") "${currency.symbol}0.00 ${if (lang == AppLanguage.EN) "(Free)" else "(免费)"}" else "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", log.cost)}",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (log.logType == "RECEIVED_IN") Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
@@ -712,9 +702,9 @@ fun StatCard(
                     fontSize = 11.sp,
                     color = Color.Gray,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier.weight(1f)
                 )
                 if (icon != null) {
                     Spacer(modifier = Modifier.width(4.dp))
@@ -727,7 +717,7 @@ fun StatCard(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = value, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(text = value, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (detailText != null) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(text = detailText, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
