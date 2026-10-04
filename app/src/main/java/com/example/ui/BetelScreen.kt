@@ -97,6 +97,14 @@ internal fun summarizeBetel(logs: List<BetelLog>, now: Long): BetelSummary {
 
 private fun label(zh: String, en: String, lang: AppLanguage) = if (lang == AppLanguage.EN) en else zh
 
+// Refresh the time snapshot when logs change, even if the minute ticker has not fired yet.
+@Composable
+internal fun rememberBetelHomeTime(
+    logs: List<BetelLog>,
+    clockTick: Long,
+    currentTimeMillis: () -> Long = { System.currentTimeMillis() }
+): Long = remember(logs, clockTick) { currentTimeMillis() }
+
 @Composable
 fun BetelHomeScreen(viewModel: SmokingViewModel) {
     val products by viewModel.betelProducts.collectAsStateWithLifecycle()
@@ -104,14 +112,15 @@ fun BetelHomeScreen(viewModel: SmokingViewModel) {
     val goal by viewModel.betelGoal.collectAsStateWithLifecycle()
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
     val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
-    val now by rememberCurrentTime()
+    val clockTick by rememberCurrentTime()
+    val now = rememberBetelHomeTime(logs, clockTick)
     val summary = remember(logs, now) { summarizeBetel(logs, now) }
     val active = products.firstOrNull { it.isActive } ?: products.firstOrNull()
     val todayStart = remember(now) { Calendar.getInstance().apply {
         timeInMillis = now
         set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
     }.timeInMillis }
-    val todayLogs = remember(logs, todayStart) { logs.filter { it.timestamp >= todayStart }.sortedByDescending { it.timestamp } }
+    val todayLogs = remember(logs, todayStart, now) { logs.filter { it.timestamp in todayStart..now }.sortedByDescending { it.timestamp } }
     val self = todayLogs.filter { it.logType == "SELF" }.sumOf { it.quantity }
     val received = todayLogs.filter { it.logType == "RECEIVED_IN" }.sumOf { it.quantity }
     val saved = todayLogs.filter { it.logType == "RECEIVED_IN" }.sumOf { log ->

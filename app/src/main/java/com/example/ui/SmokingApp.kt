@@ -110,6 +110,8 @@ fun SmokingApp(viewModel: SmokingViewModel) {
     val subject by viewModel.trackingSubject.collectAsStateWithLifecycle()
     val isBetel = subject == TrackingSubject.BETEL
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -141,6 +143,7 @@ fun SmokingApp(viewModel: SmokingViewModel) {
                 )
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
@@ -182,7 +185,23 @@ fun SmokingApp(viewModel: SmokingViewModel) {
                 .padding(paddingValues)
         ) {
             when (destinationFor(subject, selectedTab)) {
-                TrackerDestination.TOBACCO_HOME -> DashboardScreen(viewModel = viewModel, stats = stats, onOpenAiConfig = { showAiConfigDialog = true })
+                TrackerDestination.TOBACCO_HOME -> DashboardScreen(
+                    viewModel = viewModel,
+                    stats = stats,
+                    onOpenAiConfig = { showAiConfigDialog = true },
+                    onOpenBrands = { selectedTab = 3 },
+                    onDeleteLog = { log ->
+                        scope.launch {
+                            viewModel.deleteSmokingLog(log)
+                            val result = snackbarHostState.showSnackbar(
+                                message = if (lang == AppLanguage.EN) "Log deleted" else "记录已删除",
+                                actionLabel = if (lang == AppLanguage.EN) "Undo" else "撤销",
+                                withDismissAction = true
+                            )
+                            if (result == SnackbarResult.ActionPerformed) viewModel.restoreSmokingLog(log)
+                        }
+                    }
+                )
                 TrackerDestination.TOBACCO_ANALYSIS -> ChartsScreen(viewModel = viewModel, stats = stats)
                 TrackerDestination.TOBACCO_BRANDS -> StoreScreen(viewModel = viewModel)
                 TrackerDestination.TOBACCO_SETTINGS -> key(subject) { SettingsScreen(viewModel = viewModel, stats = stats, subject = subject, onOpenAiConfig = { showAiConfigDialog = true }) }
@@ -219,441 +238,413 @@ fun SmokingApp(viewModel: SmokingViewModel) {
 fun DashboardScreen(
     viewModel: SmokingViewModel,
     stats: SmokingStats,
-    onOpenAiConfig: () -> Unit = {}
+    onOpenAiConfig: () -> Unit = {},
+    onOpenBrands: () -> Unit = {},
+    onDeleteLog: (SmokingLog) -> Unit = {}
 ) {
     val logs by viewModel.logs.collectAsStateWithLifecycle()
     val cigarettes by viewModel.cigarettes.collectAsStateWithLifecycle()
     val aiAdviceState by viewModel.aiAdviceState.collectAsStateWithLifecycle()
     val lang by viewModel.appLanguage.collectAsStateWithLifecycle()
     val currency by viewModel.appCurrency.collectAsStateWithLifecycle()
+    val dayNow by viewModel.dayNow.collectAsStateWithLifecycle()
 
     var showAddLogDialog by remember { mutableStateOf(false) }
 
     val activeCigarette = cigarettes.firstOrNull { it.isActive } ?: cigarettes.firstOrNull()
 
-    // Dynamic timer calculating time elapsed since last smoking log
-    val lastLog = remember(logs) { logs.filter { it.logType != "SHARED_OUT" }.maxByOrNull { it.timestamp } }
-    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            nowMs = System.currentTimeMillis()
-            kotlinx.coroutines.delay(1000L)
-        }
-    }
-    val todayLogs = remember(logs, nowMs / 60000) {
-        val todayStart = Calendar.getInstance().apply {
-            timeInMillis = nowMs
+    val lastLog = remember(logs) { logs.firstOrNull { it.logType != "SHARED_OUT" } }
+    val dayStart = remember(dayNow) {
+        Calendar.getInstance().apply {
+            timeInMillis = dayNow
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
-        val todayEnd = Calendar.getInstance().apply {
-            timeInMillis = nowMs
-            set(Calendar.HOUR_OF_DAY, 23)
-            set(Calendar.MINUTE, 59)
-            set(Calendar.SECOND, 59)
-            set(Calendar.MILLISECOND, 999)
-        }.timeInMillis
-        logs.filter { it.timestamp in todayStart..todayEnd }
     }
-    val elapsedText = if (lastLog != null) {
-        val diff = (nowMs - lastLog.timestamp).coerceAtLeast(0L)
-        val secs = (diff / 1000) % 60
-        val mins = (diff / (1000 * 60)) % 60
-        val hours = diff / (1000 * 3600)
-        if (lang == AppLanguage.EN) {
-            String.format("%02dh %02dm %02ds", hours, mins, secs)
-        } else {
-            String.format("%02d小时%02d分%02d秒", hours, mins, secs)
-        }
-    } else {
-        AppStrings.get("timer_no_logs", lang)
-    }
+    val todayLogs = remember(logs, dayStart) { logs.filter { it.timestamp >= dayStart } }
+    var showAllTodayLogs by rememberSaveable { mutableStateOf(false) }
+    val visibleLogs = if (showAllTodayLogs) todayLogs else todayLogs.take(8)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Warning Banner if Over Limit
-        AnimatedVisibility(visible = stats.isOverLimit) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Warning,
-                        contentDescription = null,
-                        tint = Color(0xFFC62828)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = AppStrings.get("over_limit_warning", lang, stats.todayTotalCount, stats.currentGoalLimit),
-                        color = Color(0xFFC62828),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        // Active Cigarette Info Banner
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = AppStrings.get("active_brand_label", lang),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = activeCigarette?.name ?: AppStrings.get("unset_default_brand", lang),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                activeCigarette?.let { cigarette ->
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primary
-                    ) {
-                        Text(
-                            text = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", cigarette.price)}${AppStrings.get("pack_unit", lang)}",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
-        }
-
-        // Today Stats Grid (Merged 2/3 and 1/3 layout)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            val stickUnit = AppStrings.get("stick_unit", lang).trim()
-            val selfText = if (lang == AppLanguage.EN) "Self" else "自抽"
-            val recText = if (lang == AppLanguage.EN) "Received" else "接烟"
-            val targetText = if (lang == AppLanguage.EN) "Goal" else "目标"
-            val overText = if (lang == AppLanguage.EN) "Over Limit" else "已超标"
-            val onTrackText = if (lang == AppLanguage.EN) "On Track" else "符合目标"
-
-            // Merged Card 1 (Self + Received) occupying 2/3 of content width
-            StatCard(
-                title = if (lang == AppLanguage.EN) "Smoked today" else "今日实际吸烟 (自抽+接烟)",
-                value = "${stats.todaySelfCount + stats.todayReceivedCount} $stickUnit",
-                detailText = if (lang == AppLanguage.EN) "$selfText ${stats.todaySelfCount} · $recText ${stats.todayReceivedCount}" else "$selfText ${stats.todaySelfCount}$stickUnit · $recText ${stats.todayReceivedCount}$stickUnit",
-                subtitle = if (lang == AppLanguage.EN)
-                    "$targetText ${stats.currentGoalLimit} $stickUnit/day (${if (stats.isOverLimit) overText else onTrackText})"
-                else "$targetText ${stats.currentGoalLimit}$stickUnit/天 (${if (stats.isOverLimit) overText else onTrackText})",
-                icon = Icons.Rounded.SmokingRooms,
-                iconTint = if (stats.isOverLimit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.weight(2f)
-            )
-
-            // Card 2 (Shared Out) occupying 1/3 of content width
-            StatCard(
-                title = if (lang == AppLanguage.EN) "Shared today" else AppStrings.get("stat_today_shared", lang),
-                value = if (lang == AppLanguage.EN) "${stats.todaySharedCount}" else "${stats.todaySharedCount} $stickUnit",
-                detailText = if (lang == AppLanguage.EN) "sticks" else null,
-                subtitle = if (lang == AppLanguage.EN) AppStrings.get("shared_subtitle", lang) else "递烟开销",
-                icon = Icons.Rounded.CallMade,
-                iconTint = MaterialTheme.colorScheme.secondary,
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // Today Financial Metrics Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            StatCard(
-                title = AppStrings.get("stat_today_cost", lang),
-                value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todayCost)}",
-                subtitle = AppStrings.get("cost_subtitle", lang),
-                icon = Icons.Rounded.Payments,
-                iconTint = MaterialTheme.colorScheme.primary,
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.weight(1f)
-            )
-            StatCard(
-                title = AppStrings.get("stat_today_saved", lang),
-                value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todaySavedFromReceived)}",
-                subtitle = AppStrings.get("saved_subtitle", lang),
-                icon = Icons.Rounded.CardGiftcard,
-                iconTint = Color(0xFF2E7D32),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // Quick Action Buttons
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = AppStrings.get("quick_record_title", lang),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Surface(shape = RoundedCornerShape(12.dp)) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Timer, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (lastLog == null) elapsedText else if (lang == AppLanguage.EN) "Since last cigarette: $elapsedText" else "距上次吸烟 $elapsedText",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Quick 1: Self
-                    Button(
-                        onClick = {
-                            val cigId = activeCigarette?.id ?: 1
-                            viewModel.addSmokingLog(cigId, 1, "SELF", if (lang == AppLanguage.EN) "Quick Log" else "极速记录")
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp)
-                    ) {
-                        Icon(imageVector = Icons.Rounded.SmokingRooms, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(AppStrings.get("quick_self_btn", lang), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
-                    }
-
-                    // Quick 2: Shared Out
-                    Button(
-                        onClick = {
-                            val cigId = activeCigarette?.id ?: 1
-                            viewModel.addSmokingLog(cigId, 1, "SHARED_OUT", if (lang == AppLanguage.EN) "Shared Out" else "社交递烟")
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                        contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp)
-                    ) {
-                        Icon(imageVector = Icons.Rounded.CallMade, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(AppStrings.get("quick_shared_btn", lang), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
-                    }
-
-                    // Quick 3: Received In
-                    Button(
-                        onClick = {
-                            val cigId = activeCigarette?.id ?: 1
-                            viewModel.addSmokingLog(cigId, 1, "RECEIVED_IN", if (lang == AppLanguage.EN) "Received In" else "他人递烟")
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                        contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp)
-                    ) {
-                        Icon(imageVector = Icons.Rounded.CallReceived, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(AppStrings.get("quick_received_btn", lang), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                OutlinedButton(
-                    onClick = { showAddLogDialog = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(imageVector = Icons.Rounded.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(AppStrings.get("custom_record_btn", lang), fontSize = 13.sp)
-                }
-            }
-        }
-
-        // AI Coach Smart Advice Card
-        val aiCustomConfig by viewModel.aiCustomConfig.collectAsStateWithLifecycle()
-        AiCoachCard(
-            aiAdviceState = aiAdviceState,
-            aiCustomConfig = aiCustomConfig,
-            lang = lang,
-            onRefresh = { viewModel.fetchAiAdvice(force = true) },
-            onOpenSettings = onOpenAiConfig
-        )
-
-        // Recent Logs List Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = AppStrings.get("today_logs_header", lang),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = AppStrings.get("log_count", lang, todayLogs.size),
-                fontSize = 12.sp,
-                color = Color.Gray
-            )
-        }
-
-        if (todayLogs.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = AppStrings.get("no_logs_today", lang),
-                    color = Color.Gray,
-                    fontSize = 13.sp
-                )
-            }
-        } else {
-            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                todayLogs.forEach { log ->
-                    val cig = cigarettes.firstOrNull { it.id == log.cigaretteId }
-                    val logTypeName = when (log.logType) {
-                        "SHARED_OUT" -> AppStrings.get("type_shared", lang)
-                        "RECEIVED_IN" -> AppStrings.get("type_received", lang)
-                        else -> AppStrings.get("type_self", lang)
-                    }
-                    val badgeColor = when (log.logType) {
-                        "SHARED_OUT" -> MaterialTheme.colorScheme.secondary
-                        "RECEIVED_IN" -> Color(0xFF2E7D32)
-                        else -> MaterialTheme.colorScheme.primary
-                    }
-
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Warning Banner if Over Limit
+                AnimatedVisibility(visible = stats.isOverLimit) {
                     Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = badgeColor.copy(alpha = 0.15f)
-                                ) {
-                                    Text(
-                                        text = logTypeName,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        color = badgeColor,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    val defaultCigName = if (lang == AppLanguage.EN) "Cigarette" else "香烟"
-                                    val stickLabel = AppStrings.get("stick_unit", lang).trim()
-                                    Text(
-                                        text = "${cig?.name ?: defaultCigName} x${log.quantity}$stickLabel",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (log.note.isNotEmpty()) {
-                                        Text(
-                                            text = AppStrings.get("note_prefix", lang, log.note),
-                                            fontSize = 11.sp,
-                                            color = Color.Gray,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-
+                            Icon(
+                                imageVector = Icons.Rounded.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFC62828)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = AppStrings.get("over_limit_warning", lang, stats.todayTotalCount, stats.currentGoalLimit),
+                                color = Color(0xFFC62828),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        text = sdf.format(Date(log.timestamp)),
-                                        fontSize = 12.sp,
-                                        color = Color.Gray,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = if (log.logType == "RECEIVED_IN") "${currency.symbol}0.00 ${if (lang == AppLanguage.EN) "(Free)" else "(免费)"}" else "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", log.cost)}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (log.logType == "RECEIVED_IN") Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
-                                        maxLines = 1
-                                    )
-                                }
+                // Put the main daily outcome and primary action before secondary details.
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (lang == AppLanguage.EN) "Smoked today" else "今日已抽",
+                            style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text("${stats.todayTotalCount}", fontSize = 34.sp, fontWeight = FontWeight.Bold,
+                                color = if (stats.isOverLimit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (lang == AppLanguage.EN) "/ ${stats.currentGoalLimit} sticks goal" else "/ 目标 ${stats.currentGoalLimit} 支",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(bottom = 5.dp))
+                        }
+                        LinearProgressIndicator(
+                            progress = { if (stats.currentGoalLimit > 0) (stats.todayTotalCount.toFloat() / stats.currentGoalLimit).coerceIn(0f, 1f)
+                                else if (stats.todayTotalCount > 0) 1f else 0f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(if (lang == AppLanguage.EN) "Self ${stats.todaySelfCount} · Received ${stats.todayReceivedCount}"
+                            else "自抽 ${stats.todaySelfCount} 支 · 接烟 ${stats.todayReceivedCount} 支",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                }
 
-                                IconButton(
-                                    onClick = { viewModel.deleteSmokingLog(log) },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Close,
-                                        contentDescription = if (lang == AppLanguage.EN) "Delete Log" else "删除记录",
-                                        tint = Color.Gray,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
+                // Quick Action Buttons
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = AppStrings.get("quick_record_title", lang),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        SmokingElapsedTimer(lastLog?.timestamp, lang)
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Primary action stays wide enough for large text and narrow screens.
+                        Button(
+                                onClick = {
+                                    val cigId = activeCigarette?.id ?: return@Button
+                                    viewModel.addSmokingLog(cigId, 1, "SELF", if (lang == AppLanguage.EN) "Quick Log" else "极速记录")
+                                },
+                                enabled = activeCigarette != null,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                contentPadding = PaddingValues(vertical = 12.dp, horizontal = 12.dp)
+                            ) {
+                                Icon(imageVector = Icons.Rounded.SmokingRooms, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(AppStrings.get("quick_self_btn", lang), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
                             }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Quick 2: Shared Out
+                            Button(
+                                onClick = {
+                                    val cigId = activeCigarette?.id ?: return@Button
+                                    viewModel.addSmokingLog(cigId, 1, "SHARED_OUT", if (lang == AppLanguage.EN) "Shared Out" else "社交递烟")
+                                },
+                                modifier = Modifier.weight(1f),
+                                enabled = activeCigarette != null,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                contentPadding = PaddingValues(vertical = 10.dp, horizontal = 8.dp)
+                            ) {
+                                Icon(imageVector = Icons.Rounded.CallMade, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(AppStrings.get("quick_shared_btn", lang), fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
+                            }
+
+                            // Quick 3: Received In
+                            Button(
+                                onClick = {
+                                    val cigId = activeCigarette?.id ?: return@Button
+                                    viewModel.addSmokingLog(cigId, 1, "RECEIVED_IN", if (lang == AppLanguage.EN) "Received In" else "他人递烟")
+                                },
+                                modifier = Modifier.weight(1f),
+                                enabled = activeCigarette != null,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                contentPadding = PaddingValues(vertical = 10.dp, horizontal = 8.dp)
+                            ) {
+                                Icon(imageVector = Icons.Rounded.CallReceived, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(AppStrings.get("quick_received_btn", lang), fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedButton(
+                            onClick = { showAddLogDialog = true },
+                            enabled = activeCigarette != null,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(imageVector = Icons.Rounded.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(AppStrings.get("custom_record_btn", lang), fontSize = 13.sp)
+                        }
+                        if (activeCigarette == null) {
+                            TextButton(onClick = onOpenBrands, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (lang == AppLanguage.EN) "Add a brand to start logging" else "先添加品牌，再开始记录")
+                            }
+                        }
+                    }
+                }
+
+                // Active Cigarette Info Banner
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = AppStrings.get("active_brand_label", lang),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = activeCigarette?.name ?: AppStrings.get("unset_default_brand", lang),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        activeCigarette?.let { cigarette ->
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            ) {
+                                Text(
+                                    text = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", cigarette.price)}${AppStrings.get("pack_unit", lang)}",
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+
+                StatCard(
+                    title = if (lang == AppLanguage.EN) "Shared today" else AppStrings.get("stat_today_shared", lang),
+                    value = "${stats.todaySharedCount} ${AppStrings.get("stick_unit", lang).trim()}",
+                    subtitle = if (lang == AppLanguage.EN) "Given to others" else "递给他人的数量",
+                    icon = Icons.Rounded.CallMade,
+                    iconTint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Today Financial Metrics Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    StatCard(
+                        title = AppStrings.get("stat_today_cost", lang),
+                        value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todayCost)}",
+                        subtitle = AppStrings.get("cost_subtitle", lang),
+                        icon = Icons.Rounded.Payments,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    StatCard(
+                        title = AppStrings.get("stat_today_saved", lang),
+                        value = "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", stats.todaySavedFromReceived)}",
+                        subtitle = AppStrings.get("saved_subtitle", lang),
+                        icon = Icons.Rounded.CardGiftcard,
+                        iconTint = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // AI Coach Smart Advice Card
+                val aiCustomConfig by viewModel.aiCustomConfig.collectAsStateWithLifecycle()
+                AiCoachCard(
+                    aiAdviceState = aiAdviceState,
+                    aiCustomConfig = aiCustomConfig,
+                    lang = lang,
+                    onRefresh = { viewModel.fetchAiAdvice(force = true) },
+                    onOpenSettings = onOpenAiConfig
+                )
+
+                // Recent Logs List Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = AppStrings.get("today_logs_header", lang),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (todayLogs.size > 8) {
+                        TextButton(onClick = { showAllTodayLogs = !showAllTodayLogs }) {
+                            Text(if (showAllTodayLogs) {
+                                if (lang == AppLanguage.EN) "Show less" else "收起"
+                            } else {
+                                if (lang == AppLanguage.EN) "View all (${todayLogs.size})" else "查看全部（${todayLogs.size}）"
+                            })
+                        }
+                    } else {
+                        Text(text = AppStrings.get("log_count", lang, todayLogs.size), fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                if (todayLogs.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = AppStrings.get("no_logs_today", lang),
+                            color = Color.Gray,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+        items(visibleLogs, key = { it.id }) { log ->
+            val sdf = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+            val cig = cigarettes.firstOrNull { it.id == log.cigaretteId }
+            val logTypeName = when (log.logType) {
+                "SHARED_OUT" -> AppStrings.get("type_shared", lang)
+                "RECEIVED_IN" -> AppStrings.get("type_received", lang)
+                else -> AppStrings.get("type_self", lang)
+            }
+            val badgeColor = when (log.logType) {
+                "SHARED_OUT" -> MaterialTheme.colorScheme.secondary
+                "RECEIVED_IN" -> Color(0xFF2E7D32)
+                else -> MaterialTheme.colorScheme.primary
+            }
+
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = badgeColor.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = logTypeName,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                color = badgeColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            val defaultCigName = if (lang == AppLanguage.EN) "Cigarette" else "香烟"
+                            val stickLabel = AppStrings.get("stick_unit", lang).trim()
+                            Text(
+                                text = "${cig?.name ?: defaultCigName} x${log.quantity}$stickLabel",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (log.note.isNotEmpty()) {
+                                Text(
+                                    text = AppStrings.get("note_prefix", lang, log.note),
+                                    fontSize = 11.sp,
+                                    color = Color.Gray,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = sdf.format(Date(log.timestamp)),
+                                fontSize = 12.sp,
+                                color = Color.Gray,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = if (log.logType == "RECEIVED_IN") "${currency.symbol}0.00 ${if (lang == AppLanguage.EN) "(Free)" else "(免费)"}" else "${currency.symbol}${String.format(Locale.getDefault(), "%.2f", log.cost)}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (log.logType == "RECEIVED_IN") Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
+                                maxLines = 1
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { onDeleteLog(log) }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = if (lang == AppLanguage.EN) "Delete Log" else "删除记录",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                 }
@@ -670,6 +661,34 @@ fun DashboardScreen(
                 viewModel.addSmokingLog(cigId, qty, logType, note)
                 showAddLogDialog = false
             }
+        )
+    }
+}
+
+@Composable
+private fun SmokingElapsedTimer(lastTimestamp: Long?, lang: AppLanguage) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(lastTimestamp) {
+        while (true) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1_000L)
+        }
+    }
+    val elapsed = lastTimestamp?.let {
+        val seconds = (now - it).coerceAtLeast(0L) / 1_000
+        val hours = seconds / 3_600
+        val minutes = (seconds / 60) % 60
+        val secs = seconds % 60
+        if (lang == AppLanguage.EN) "%02dh %02dm %02ds".format(hours, minutes, secs)
+        else "%02d小时%02d分%02d秒".format(hours, minutes, secs)
+    } ?: AppStrings.get("timer_no_logs", lang)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(16.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = if (lastTimestamp == null) elapsed else if (lang == AppLanguage.EN) "Since last cigarette: $elapsed" else "距上次吸烟 $elapsed",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -3578,6 +3597,7 @@ fun FormattedAdviceText(
                     )
                     Text(
                         text = parseMarkdownToAnnotatedString(bulletContent),
+                        modifier = Modifier.weight(1f),
                         fontSize = 13.5.sp,
                         lineHeight = 20.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -3618,10 +3638,15 @@ fun AiCoachCard(
         )
     )
 
+    val activeResult = when (aiAdviceState) {
+        is AiAdviceState.Success -> aiAdviceState.result
+        is AiAdviceState.Loading -> aiAdviceState.previous
+        is AiAdviceState.Error -> aiAdviceState.previous
+        else -> null
+    }
+
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
@@ -3629,126 +3654,114 @@ fun AiCoachCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Header Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f, fill = false)
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.AutoAwesome,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = AppStrings.get("ai_advice_title", lang),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(top = 2.dp)
-                        ) {
-                            val activeResult = when (aiAdviceState) {
-                                is AiAdviceState.Success -> aiAdviceState.result
-                                is AiAdviceState.Loading -> aiAdviceState.previous
-                                is AiAdviceState.Error -> aiAdviceState.previous
-                                else -> null
-                            }
-                            if (activeResult != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = when (activeResult.source) {
-                                        AiAdviceSource.OPENAI_COMPATIBLE -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
-                                        AiAdviceSource.GEMINI_CLOUD -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f)
-                                        AiAdviceSource.LOCAL_FALLBACK -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f)
-                                    }
-                                ) {
-                                    Text(
-                                        text = when (activeResult.source) {
-                                            AiAdviceSource.OPENAI_COMPATIBLE -> "⚡ ${activeResult.modelName}"
-                                            AiAdviceSource.GEMINI_CLOUD -> "☁️ ${activeResult.modelName}"
-                                            AiAdviceSource.LOCAL_FALLBACK -> "🛡️ ${AppStrings.get("ai_source_local", lang)}"
-                                        },
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        color = when (activeResult.source) {
-                                            AiAdviceSource.OPENAI_COMPATIBLE -> MaterialTheme.colorScheme.onPrimaryContainer
-                                            AiAdviceSource.GEMINI_CLOUD -> MaterialTheme.colorScheme.onTertiaryContainer
-                                            AiAdviceSource.LOCAL_FALLBACK -> MaterialTheme.colorScheme.onSecondaryContainer
-                                        }
-                                    )
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant
-                                ) {
-                                    Text(
-                                        text = if (lang == AppLanguage.EN) activeResult.persona.labelEn else activeResult.persona.labelZh.substringBefore(" "),
-                                        fontSize = 10.sp,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            } else {
-                                Text(
-                                    text = if (aiCustomConfig.enabled) "⚡ ${aiCustomConfig.modelName} 通道就绪" else "🛡️ 离线智能引擎就绪",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                )
-                            }
-                        }
-                    }
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
-
-                // Action buttons
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onOpenSettings,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Tune,
-                            contentDescription = AppStrings.get("ai_config_title", lang),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    IconButton(
-                        onClick = onRefresh,
-                        enabled = !isLoading,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = if (lang == AppLanguage.EN) "Refresh AI Advice" else "刷新 AI 建议",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .size(18.dp)
-                                .then(if (isLoading) Modifier.rotate(rotation) else Modifier)
-                        )
-                    }
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = AppStrings.get("ai_advice_title", lang),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Rounded.Tune,
+                        contentDescription = AppStrings.get("ai_config_title", lang),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(onClick = onRefresh, enabled = !isLoading) {
+                    Icon(
+                        imageVector = Icons.Rounded.Refresh,
+                        contentDescription = if (lang == AppLanguage.EN) "Refresh AI Advice" else "刷新 AI 建议",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .then(if (isLoading) Modifier.rotate(rotation) else Modifier)
+                    )
                 }
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+            if (activeResult != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.weight(1f, fill = false),
+                        shape = RoundedCornerShape(6.dp),
+                        color = when (activeResult.source) {
+                            AiAdviceSource.OPENAI_COMPATIBLE -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                            AiAdviceSource.GEMINI_CLOUD -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f)
+                            AiAdviceSource.LOCAL_FALLBACK -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f)
+                        }
+                    ) {
+                        Text(
+                            text = when (activeResult.source) {
+                                AiAdviceSource.OPENAI_COMPATIBLE -> "⚡ ${activeResult.modelName}"
+                                AiAdviceSource.GEMINI_CLOUD -> "☁️ ${activeResult.modelName}"
+                                AiAdviceSource.LOCAL_FALLBACK -> "🛡️ ${AppStrings.get("ai_source_local", lang)}"
+                            },
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            color = when (activeResult.source) {
+                                AiAdviceSource.OPENAI_COMPATIBLE -> MaterialTheme.colorScheme.onPrimaryContainer
+                                AiAdviceSource.GEMINI_CLOUD -> MaterialTheme.colorScheme.onTertiaryContainer
+                                AiAdviceSource.LOCAL_FALLBACK -> MaterialTheme.colorScheme.onSecondaryContainer
+                            }
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Text(
+                            text = if (lang == AppLanguage.EN) activeResult.persona.labelEn else activeResult.persona.labelZh.substringBefore(" "),
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = if (aiCustomConfig.enabled) {
+                        if (lang == AppLanguage.EN) "⚡ ${aiCustomConfig.modelName} ready" else "⚡ ${aiCustomConfig.modelName} 通道就绪"
+                    } else {
+                        if (lang == AppLanguage.EN) "🛡️ Offline coach ready" else "🛡️ 离线智能引擎就绪"
+                    },
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
 
             // Body
@@ -3789,6 +3802,7 @@ fun AiCoachCard(
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
                                     text = AppStrings.get("ai_advice_loading", lang),
+                                    modifier = Modifier.weight(1f),
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

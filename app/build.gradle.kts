@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.smokingtracker.yubv4o"
     minSdk = 24
     targetSdk = 36
-    versionCode = 2
-    versionName = "0.1.01"
+    versionCode = 3
+    versionName = "0.1.02"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -28,11 +28,16 @@ android {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
       val ksFile = file(keystorePath)
       if (ksFile.exists()) {
+        // Local credentials stay in an ignored file; CI can override them with environment variables.
+        val localPasswordFile = rootProject.file(".release-signing-password")
+        val localPassword = localPasswordFile.takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() }
+        val signingPassword = System.getenv("STORE_PASSWORD") ?: localPassword
+          ?: error("Release keystore exists, but STORE_PASSWORD or .release-signing-password is missing")
         storeFile = ksFile
         storeType = "pkcs12"
-        storePassword = System.getenv("STORE_PASSWORD") ?: "android"
+        storePassword = signingPassword
         keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
-        keyPassword = System.getenv("KEY_PASSWORD") ?: "android"
+        keyPassword = System.getenv("KEY_PASSWORD") ?: signingPassword
       } else {
         storeFile = file("${rootDir}/debug.keystore")
         storePassword = "android"

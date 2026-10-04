@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -618,9 +619,16 @@ class SmokingViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Process general stats
-    val stats: StateFlow<SmokingStats> = combine(logs, activeGoal, cigarettes) { logList, goal, cigList ->
-        calculateStats(logList, goal, cigList)
+    // A date boundary must refresh today's totals even if the database has not changed.
+    val dayNow: StateFlow<Long> = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(millisUntilNextDay(System.currentTimeMillis()))
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), System.currentTimeMillis())
+
+    val stats: StateFlow<SmokingStats> = combine(logs, activeGoal, cigarettes, dayNow) { logList, goal, cigList, _ ->
+        calculateStats(logList, goal, cigList, System.currentTimeMillis())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SmokingStats())
 
     init {
@@ -962,20 +970,21 @@ class SmokingViewModel(
         }
     }
 
-    private fun calculateStats(logList: List<SmokingLog>, goal: SmokingGoal?, cigList: List<Cigarette>): SmokingStats {
+    private fun calculateStats(logList: List<SmokingLog>, goal: SmokingGoal?, cigList: List<Cigarette>, now: Long): SmokingStats {
         val todayStart = Calendar.getInstance().apply {
+            timeInMillis = now
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
 
-        val weekStart = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }.timeInMillis
-        val monthStart = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -30) }.timeInMillis
+        val weekStart = Calendar.getInstance().apply { timeInMillis = now; add(Calendar.DAY_OF_YEAR, -7) }.timeInMillis
+        val monthStart = Calendar.getInstance().apply { timeInMillis = now; add(Calendar.DAY_OF_MONTH, -30) }.timeInMillis
 
-        val todayLogs = logList.filter { it.timestamp >= todayStart }
-        val weekLogs = logList.filter { it.timestamp >= weekStart }
-        val monthLogs = logList.filter { it.timestamp >= monthStart }
+        val todayLogs = logList.filter { it.timestamp in todayStart..now }
+        val weekLogs = logList.filter { it.timestamp in weekStart..now }
+        val monthLogs = logList.filter { it.timestamp in monthStart..now }
 
         val todaySelf = todayLogs.filter { getLogType(it) == "SELF" }.sumOf { it.quantity }
         val todayShared = todayLogs.filter { getLogType(it) == "SHARED_OUT" }.sumOf { it.quantity }
@@ -1093,14 +1102,15 @@ class SmokingViewModel(
         customTime: Long? = null
     ) {
         viewModelScope.launch {
-            val cigarette = repository.getCigaretteById(cigaretteId) ?: cigarettes.value.firstOrNull()
-            val price = cigarette?.price ?: 20.0
-            val packSize = cigarette?.packSize ?: 20
+            if (quantity <= 0 || logType !in setOf("SELF", "SHARED_OUT", "RECEIVED_IN")) return@launch
+            val cigarette = repository.getCigaretteById(cigaretteId) ?: return@launch
+            val price = cigarette.price
+            val packSize = cigarette.packSize.coerceAtLeast(1)
 
             val costOfEvent = if (logType == "RECEIVED_IN") 0.0 else (quantity.toDouble() / packSize) * price
 
             val log = SmokingLog(
-                cigaretteId = cigarette?.id ?: cigaretteId,
+                cigaretteId = cigarette.id,
                 quantity = quantity,
                 isShared = (logType == "SHARED_OUT"),
                 logType = logType,
@@ -1113,11 +1123,14 @@ class SmokingViewModel(
         }
     }
 
-    fun deleteSmokingLog(log: SmokingLog) {
-        viewModelScope.launch {
-            repository.deleteLog(log)
-            fetchAiAdvice()
-        }
+    suspend fun deleteSmokingLog(log: SmokingLog) {
+        repository.deleteLog(log)
+        fetchAiAdvice()
+    }
+
+    suspend fun restoreSmokingLog(log: SmokingLog) {
+        repository.insertLog(log)
+        fetchAiAdvice()
     }
 
     fun updateGoal(dailyLimit: Int, targetQuitDate: Long?, monthlyBudget: Double?) {
@@ -1435,3 +1448,12 @@ class SmokingViewModelFactory(private val context: Context) : ViewModelProvider.
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
+
+internal fun millisUntilNextDay(now: Long): Long = Calendar.getInstance().apply {
+    timeInMillis = now
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+    add(Calendar.DAY_OF_YEAR, 1)
+}.timeInMillis.let { (it - now).coerceAtLeast(1L) }
