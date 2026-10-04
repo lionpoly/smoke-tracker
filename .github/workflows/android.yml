@@ -53,6 +53,11 @@ jobs:
             -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Run Unit Tests
+        env:
+          # A tagged checkout has the release keystore even during test task configuration.
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: gradle :app:testDebugUnitTest
 
       - name: Build Debug APK and Bundle
